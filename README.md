@@ -10,6 +10,25 @@
 - **Game**: Pygame-CE
 - **Language**: Python 3.11+
 
+## 의존성 기준
+
+2026-05-13 기준 PyPI 최신 릴리스를 확인한 뒤, 프로젝트의 최소 권장 버전을
+다음과 같이 갱신 대상으로 둡니다. `numpy`는 MediaPipe/OpenCV/PyTorch 호환성
+검증 전까지 1.26 계열을 보수적 하한으로 유지합니다.
+
+| 영역 | 패키지 | 최소 권장 버전 |
+|------|--------|----------------|
+| AI | `mediapipe` | `0.10.35` |
+| AI | `torch` | `2.11.0` |
+| AI | `numpy` | `1.26.4` |
+| AI | `scikit-learn` | `1.8.0` |
+| AI | `matplotlib` | `3.10.9` |
+| AI | `opencv-python` | `4.13.0.92` |
+| Game | `pygame-ce` | `2.5.7` |
+| Dev Tools | `black` | `26.3.1` |
+| Dev Tools | `ruff` | `0.15.12` |
+| Dev Tools | `pytest` | `9.0.3` |
+
 ## 빠른 시작
 
 ```bash

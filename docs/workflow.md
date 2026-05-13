@@ -8,6 +8,23 @@
 - 좌표계는 처음부터 1920×1080 기준으로 확정
 - 스프라이트 에셋은 Phase 4에서 교체
 
+## 의존성 업데이트 기준
+
+2026-05-13 기준 PyPI 최신 릴리스를 확인하여 `requirements.txt`의 최소
+권장 버전 갱신 기준을 정했다. `numpy`는 최신 2.x 계열 대신
+MediaPipe/OpenCV/PyTorch 조합에서 검증 부담이 낮은 `1.26.4`를 하한으로 둔다.
+
+- `mediapipe>=0.10.35`
+- `torch>=2.11.0`
+- `numpy>=1.26.4`
+- `scikit-learn>=1.8.0`
+- `matplotlib>=3.10.9`
+- `opencv-python>=4.13.0.92`
+- `pygame-ce>=2.5.7`
+- `black>=26.3.1`
+- `ruff>=0.15.12`
+- `pytest>=9.0.3`
+
 ---
 
 ## Phase 0 — AI 파이프라인 (Phase 1과 병렬 진행)

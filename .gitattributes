@@ -1,0 +1,12 @@
+# 모든 텍스트 파일의 줄바꿈을 LF로 통일
+* text=auto eol=lf
+
+# 바이너리 파일 — diff/merge 방지
+*.png binary
+*.jpg binary
+*.wav binary
+*.mp3 binary
+*.ogg binary
+*.ttf binary
+*.otf binary
+*.pth binary

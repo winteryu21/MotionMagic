@@ -1,0 +1,18 @@
+[project]
+name = "motionmagic"
+version = "0.1.0"
+description = "MediaPipe 손동작 인식과 CNN 기반 제스처 분류를 활용한 실시간 마법 전투 디펜스 게임"
+requires-python = ">=3.11"
+
+[tool.black]
+line-length = 88
+
+[tool.ruff]
+line-length = 88
+select = ["E", "F", "I", "N", "W", "UP"]
+
+[tool.ruff.isort]
+known-first-party = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

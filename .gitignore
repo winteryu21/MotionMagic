@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.venv/
+
+# AI 데이터 (개인 수집물 — 버전 관리 대상 아님)
+data/raw/
+data/processed/
+data/splits/
+
+# 모델 체크포인트
+models/*.pth
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+.DS_Store
+Desktop.ini

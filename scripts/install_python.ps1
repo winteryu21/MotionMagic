@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     MotionMagic 프로젝트 협업을 위한 Python 3.12.10 자동 설치 및 가상환경 구성 스크립트.
 .DESCRIPTION
@@ -6,6 +6,9 @@
     없다면 공식 파이썬 웹사이트에서 인스톨러를 다운로드하여 Silent 모드로 자동 설치합니다.
     설치 완료 후 프로젝트 가상환경(.venv)을 구축하고 의존성 패키지를 설치합니다.
 #>
+
+$OutputEncoding = [System.Text.Encoding]::UTF8
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 $PythonVersionTarget = "3.12.10"
 $InstallerUrl = "https://www.python.org/ftp/python/3.12.10/python-3.12.10-amd64.exe"

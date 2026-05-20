@@ -1,5 +1,6 @@
 # 모든 텍스트 파일의 줄바꿈을 LF로 통일
 * text=auto eol=lf
+*.bat text eol=crlf
 
 # 바이너리 파일 — diff/merge 방지
 *.png binary

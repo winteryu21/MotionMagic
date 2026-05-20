@@ -22,17 +22,21 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.ai.aim_tracker import AimTracker
+from src.ai.collector import HAND_CONNECTIONS, HAND_LANDMARKER_MODEL, _draw_landmarks
 from src.ai.preprocessor import (
-    extract_2d_landmarks,
+    GESTURE_LABELS,
     extract_finger_states,
     normalize_landmarks,
 )
 from src.ai.rule_validator import validate_gesture
 
-# MediaPipe 설정
-MP_HANDS = mp.solutions.hands
-MP_DRAWING = mp.solutions.drawing_utils
-MP_DRAWING_STYLES = mp.solutions.drawing_styles
+# MediaPipe Tasks API
+from mediapipe.tasks.python import BaseOptions
+from mediapipe.tasks.python.vision import (
+    HandLandmarker,
+    HandLandmarkerOptions,
+    RunningMode as VisionRunningMode,
+)
 
 # 제스처별 표시 색상 (BGR)
 GESTURE_COLORS: dict[str, tuple[int, int, int]] = {
@@ -87,6 +91,10 @@ def run_demo(model_path: Path, camera_id: int = 0) -> None:
         model.eval()
         print(f"PyTorch 모델 로드: {model_path}")
 
+    if not HAND_LANDMARKER_MODEL.exists():
+        print(f"HandLandmarker 모델 없음: {HAND_LANDMARKER_MODEL}")
+        return
+
     # 조준선 추적기
     aim_tracker = AimTracker(game_width=640, game_height=480)
 
@@ -99,16 +107,21 @@ def run_demo(model_path: Path, camera_id: int = 0) -> None:
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 
-    from src.ai.preprocessor import GESTURE_LABELS
-
     fps_history: list[float] = []
 
-    with MP_HANDS.Hands(
-        static_image_mode=False,
-        max_num_hands=2,
-        min_detection_confidence=0.7,
+    # HandLandmarker 옵션
+    options = HandLandmarkerOptions(
+        base_options=BaseOptions(
+            model_asset_path=str(HAND_LANDMARKER_MODEL)
+        ),
+        running_mode=VisionRunningMode.IMAGE,
+        num_hands=2,
+        min_hand_detection_confidence=0.7,
+        min_hand_presence_confidence=0.5,
         min_tracking_confidence=0.5,
-    ) as hands:
+    )
+
+    with HandLandmarker.create_from_options(options) as landmarker:
         print("\n실시간 데모 시작! (종료: 'q' 또는 ESC)")
 
         while True:
@@ -119,111 +132,116 @@ def run_demo(model_path: Path, camera_id: int = 0) -> None:
 
             frame = cv2.flip(frame, 1)
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            results = hands.process(rgb)
+
+            # MediaPipe 감지
+            mp_image = mp.Image(
+                image_format=mp.ImageFormat.SRGB, data=rgb
+            )
+            result = landmarker.detect(mp_image)
 
             gesture_text = "None"
             confidence = 0.0
             gesture_color = (128, 128, 128)
 
-            if results.multi_hand_landmarks:
+            if result.hand_landmarks:
                 # 다중 손 감지: Y축 가장 높은 손 선택
-                best_hand = None
+                best_hand_idx = 0
                 best_y = float("inf")
 
-                for hand_lm in results.multi_hand_landmarks:
-                    wrist_y = hand_lm.landmark[0].y
+                for idx, hand_lms in enumerate(result.hand_landmarks):
+                    wrist_y = hand_lms[0].y
                     if wrist_y < best_y:
                         best_y = wrist_y
-                        best_hand = hand_lm
+                        best_hand_idx = idx
 
-                if best_hand is not None:
-                    # 랜드마크 그리기
-                    MP_DRAWING.draw_landmarks(
-                        frame,
-                        best_hand,
-                        MP_HANDS.HAND_CONNECTIONS,
-                        MP_DRAWING_STYLES.get_default_hand_landmarks_style(),
-                        MP_DRAWING_STYLES.get_default_hand_connections_style(),
-                    )
+                best_hand = result.hand_landmarks[best_hand_idx]
 
-                    # 좌표 추출 및 전처리
-                    raw_coords = np.array(
-                        [[lm.x, lm.y] for lm in best_hand.landmark],
-                        dtype=np.float32,
-                    )
+                # 좌표 추출
+                landmarks_data = [
+                    {"x": lm.x, "y": lm.y} for lm in best_hand
+                ]
 
-                    # 조준점 업데이트
-                    aim_x, aim_y = aim_tracker.update(raw_coords)
-                    cv2.circle(
-                        frame,
-                        (int(aim_x), int(aim_y)),
-                        8,
-                        (0, 255, 255),
-                        2,
-                    )
-                    cv2.drawMarker(
-                        frame,
-                        (int(aim_x), int(aim_y)),
-                        (0, 255, 255),
-                        cv2.MARKER_CROSS,
-                        20,
-                        2,
-                    )
+                # 랜드마크 그리기
+                _draw_landmarks(frame, landmarks_data)
 
-                    # 정규화
-                    normalized = normalize_landmarks(raw_coords)
-                    if normalized is not None:
-                        finger_states = extract_finger_states(normalized)
+                # 좌표를 배열로 변환
+                raw_coords = np.array(
+                    [[lm.x, lm.y] for lm in best_hand],
+                    dtype=np.float32,
+                )
 
-                        # 추론
-                        if is_onnx:
-                            outputs = session.run(
-                                None,
-                                {
-                                    input_names[0]: normalized[
-                                        np.newaxis, :, :
-                                    ],
-                                    input_names[1]: finger_states[
-                                        np.newaxis, :
-                                    ],
-                                },
-                            )
-                            logits = outputs[0][0]
-                        else:
-                            with torch.no_grad():
-                                lm_t = torch.from_numpy(
-                                    normalized
-                                ).unsqueeze(0)
-                                fs_t = torch.from_numpy(
-                                    finger_states
-                                ).unsqueeze(0)
-                                logits = model(lm_t, fs_t).numpy()[0]
+                # 조준점 업데이트
+                aim_x, aim_y = aim_tracker.update(raw_coords)
+                cv2.circle(
+                    frame,
+                    (int(aim_x), int(aim_y)),
+                    8,
+                    (0, 255, 255),
+                    2,
+                )
+                cv2.drawMarker(
+                    frame,
+                    (int(aim_x), int(aim_y)),
+                    (0, 255, 255),
+                    cv2.MARKER_CROSS,
+                    20,
+                    2,
+                )
 
-                        # Softmax
-                        exp_l = np.exp(logits - np.max(logits))
-                        probs = exp_l / exp_l.sum()
-                        pred_idx = int(np.argmax(probs))
-                        confidence = float(probs[pred_idx])
-                        raw_label = GESTURE_LABELS.get(pred_idx, "idle")
+                # 정규화
+                normalized = normalize_landmarks(raw_coords)
+                if normalized is not None:
+                    finger_states = extract_finger_states(normalized)
 
-                        # 규칙 검증
-                        validated = validate_gesture(
-                            raw_label,
-                            normalized,
-                            confidence,
-                            min_confidence=0.6,
+                    # 추론
+                    if is_onnx:
+                        outputs = session.run(
+                            None,
+                            {
+                                input_names[0]: normalized[
+                                    np.newaxis, :, :
+                                ],
+                                input_names[1]: finger_states[
+                                    np.newaxis, :
+                                ],
+                            },
                         )
+                        logits = outputs[0][0]
+                    else:
+                        with torch.no_grad():
+                            lm_t = torch.from_numpy(
+                                normalized
+                            ).unsqueeze(0)
+                            fs_t = torch.from_numpy(
+                                finger_states
+                            ).unsqueeze(0)
+                            logits = model(lm_t, fs_t).numpy()[0]
 
-                        if validated:
-                            gesture_text = GESTURE_KOR.get(
-                                validated, validated
-                            )
-                            gesture_color = GESTURE_COLORS.get(
-                                validated, (255, 255, 255)
-                            )
-                        else:
-                            gesture_text = f"({raw_label}?) 검증 실패"
-                            gesture_color = (0, 0, 200)
+                    # Softmax
+                    exp_l = np.exp(logits - np.max(logits))
+                    probs = exp_l / exp_l.sum()
+                    pred_idx = int(np.argmax(probs))
+                    confidence = float(probs[pred_idx])
+                    raw_label = GESTURE_LABELS.get(pred_idx, "idle")
+
+                    # 규칙 검증
+                    validated = validate_gesture(
+                        raw_label,
+                        normalized,
+                        confidence,
+                        min_confidence=0.6,
+                    )
+
+                    if validated:
+                        gesture_text = GESTURE_KOR.get(
+                            validated, validated
+                        )
+                        gesture_color = GESTURE_COLORS.get(
+                            validated, (255, 255, 255)
+                        )
+                    else:
+                        gesture_text = f"({raw_label}?) failed"
+                        gesture_color = (0, 0, 200)
 
             # FPS 계산
             elapsed = time.time() - t0
@@ -234,7 +252,6 @@ def run_demo(model_path: Path, camera_id: int = 0) -> None:
             avg_fps = sum(fps_history) / len(fps_history)
 
             # 화면 표시
-            # 배경 패널
             cv2.rectangle(frame, (0, 0), (400, 90), (0, 0, 0), -1)
             cv2.putText(
                 frame,

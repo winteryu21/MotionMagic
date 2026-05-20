@@ -41,8 +41,8 @@ def main() -> None:
     parser.add_argument(
         "--samples",
         type=int,
-        default=1000,
-        help="클래스당 수집할 프레임 수 (기본: 1000)",
+        default=500,
+        help="클래스당 수집할 프레임 수 (기본: 500)",
     )
     parser.add_argument(
         "--camera",
@@ -53,8 +53,8 @@ def main() -> None:
     parser.add_argument(
         "--interval",
         type=int,
-        default=100,
-        help="자동 캡처 간격 밀리초 (기본: 100ms)",
+        default=30,
+        help="자동 캡처 간격 밀리초 (기본: 30ms)",
     )
     parser.add_argument(
         "--output",

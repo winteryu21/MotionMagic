@@ -6,6 +6,12 @@ end_of_line = lf
 insert_final_newline = true
 trim_trailing_whitespace = true
 
+[*.bat]
+end_of_line = crlf
+
+[*.ps1]
+charset = utf-8-bom
+
 [*.py]
 indent_style = space
 indent_size = 4

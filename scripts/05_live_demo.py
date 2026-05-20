@@ -47,13 +47,13 @@ GESTURE_COLORS: dict[str, tuple[int, int, int]] = {
     "idle": (128, 128, 128),  # 회색
 }
 
-# 제스처별 한국어 표시
-GESTURE_KOR: dict[str, str] = {
-    "rock": "바위 ✊",
-    "paper": "보 ✋",
-    "scissors": "가위 ✌",
-    "trigger": "트리거 🔫",
-    "idle": "대기 ⏳",
+# 제스처별 표시 텍스트 (OpenCV 글꼴 깨짐 방지를 위해 영문 사용)
+GESTURE_DISPLAY: dict[str, str] = {
+    "rock": "ROCK",
+    "paper": "PAPER",
+    "scissors": "SCISSORS",
+    "trigger": "TRIGGER",
+    "idle": "IDLE",
 }
 
 
@@ -233,7 +233,7 @@ def run_demo(model_path: Path, camera_id: int = 0) -> None:
                     )
 
                     if validated:
-                        gesture_text = GESTURE_KOR.get(
+                        gesture_text = GESTURE_DISPLAY.get(
                             validated, validated
                         )
                         gesture_color = GESTURE_COLORS.get(

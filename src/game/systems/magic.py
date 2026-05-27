@@ -1,171 +1,207 @@
-"""마법 시스템 — 개발용 q/w/e 조합으로 마법 발동."""
+"""마법 시스템 — 제스처 조합 및 단축키로 마법 발동."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-import time
+import math
+import random
+from typing import Optional
 
-from src.game.entities.player import Player
-from src.game.entities.projectile import Explosion, LightningStrike, MagicMissile
-from src.game.settings import GESTURE_PAPER, GESTURE_ROCK, GESTURE_SCISSORS, PLAYER_X, PLAYER_Y
+import pygame
 
+from src.game.entities.projectile import Projectile
+from src.game.game_manager import GameManager
+from src.game.settings import SCREEN_HEIGHT, SCREEN_WIDTH
+from src.game.systems.spell_data import SPELL_REGISTRY
 
-@dataclass(frozen=True, slots=True)
-class MagicLevelStat:
-    cooldown: float
-    damage: float
-    mana_cost: float
-    projectile_speed: float = 420.0
-    radius: float = 80.0
-    target_count: int = 1
-    unlocked: bool = True
-    status_effect: str | None = None
+_VIEW_HEIGHT: int = SCREEN_HEIGHT
 
 
-@dataclass(slots=True)
-class Spell:
-    name: str
-    combo: tuple[str, str]
-    level_table: dict[int, MagicLevelStat]
-    level: int = 1
-    unlocked: bool = True
-    last_cast_time: float = field(default=-999.0)
+class PiercingBullet(Projectile):
+    """관통 마탄 투사체. 적을 뚫고 지나가며 다수의 적에게 피해를 준다."""
 
-    @property
-    def stat(self) -> MagicLevelStat:
-        return self.level_table[min(self.level, max(self.level_table))]
+    def __init__(
+        self,
+        x: float,
+        y: float,
+        speed_x: float,
+        speed_y: float,
+        damage: float,
+        field_id: int,
+        pierce_limit: int = 3,
+    ) -> None:
+        image = pygame.Surface((20, 10), pygame.SRCALPHA)
+        pygame.draw.ellipse(image, (155, 89, 182), (0, 0, 20, 10))
+        pygame.draw.ellipse(image, (255, 255, 255), (4, 2, 12, 6))
 
-    def is_unlocked(self) -> bool:
-        return self.unlocked and self.stat.unlocked
+        super().__init__(x, y, speed_x, speed_y, damage, field_id, image=image)
+        self.pierce_limit = pierce_limit
+        self.hit_enemies: set[pygame.sprite.Sprite] = set()
 
-    def cooldown_duration(self, player: Player) -> float:
-        return self.stat.cooldown * player.global_cooldown_multiplier
+    def can_hit(self, enemy: pygame.sprite.Sprite) -> bool:
+        return enemy not in self.hit_enemies and len(self.hit_enemies) < self.pierce_limit
 
-    def cooldown_remaining(self, player: Player, now: float) -> float:
-        return max(0.0, self.cooldown_duration(player) - (now - self.last_cast_time))
 
-    def can_cast(self, player: Player, now: float) -> bool:
-        stat = self.stat
-        return self.is_unlocked() and player.mana >= stat.mana_cost and self.cooldown_remaining(player, now) <= 0.0
+class Fireball(Projectile):
+    """화염구 투사체. 충돌 시 폭발하여 범위 내 모든 적에게 AoE 피해를 입힌다."""
 
-    def level_up(self) -> None:
-        self.level = min(self.level + 1, max(self.level_table))
+    def __init__(
+        self,
+        x: float,
+        y: float,
+        speed_x: float,
+        speed_y: float,
+        damage: float,
+        field_id: int,
+        explosion_radius: float = 1200.0,
+    ) -> None:
+        image = pygame.Surface((32, 32), pygame.SRCALPHA)
+        pygame.draw.circle(image, (230, 126, 34), (16, 16), 16)
+        pygame.draw.circle(image, (241, 196, 15), (16, 16), 10)
+        pygame.draw.circle(image, (255, 255, 255), (16, 16), 5)
+
+        super().__init__(x, y, speed_x, speed_y, damage, field_id, image=image)
+        self.explosion_radius = explosion_radius
 
 
 class MagicSystem:
-    def __init__(self) -> None:
-        self.spells: dict[str, Spell] = {
-            "magic_missile": Spell(
-                name="매직 미사일",
-                combo=(GESTURE_SCISSORS, GESTURE_ROCK),
-                level_table={
-                    1: MagicLevelStat(cooldown=0.45, damage=20, mana_cost=8, projectile_speed=480, target_count=1),
-                    2: MagicLevelStat(cooldown=0.38, damage=26, mana_cost=9, projectile_speed=540, target_count=2),
-                    3: MagicLevelStat(cooldown=0.32, damage=34, mana_cost=10, projectile_speed=600, target_count=3),
-                },
-            ),
-            "explosion": Spell(
-                name="폭발",
-                combo=(GESTURE_ROCK, GESTURE_PAPER),
-                level_table={
-                    1: MagicLevelStat(cooldown=1.4, damage=30, mana_cost=18, radius=85, status_effect="dot"),
-                    2: MagicLevelStat(cooldown=1.2, damage=42, mana_cost=21, radius=105, status_effect="dot"),
-                    3: MagicLevelStat(cooldown=1.0, damage=55, mana_cost=25, radius=130, status_effect="dot"),
-                },
-            ),
-            "lightning": Spell(
-                name="낙뢰",
-                combo=(GESTURE_PAPER, GESTURE_SCISSORS),
-                unlocked=False,
-                level_table={
-                    1: MagicLevelStat(cooldown=1.1, damage=24, mana_cost=16, radius=60, status_effect="stun"),
-                    2: MagicLevelStat(cooldown=0.95, damage=34, mana_cost=19, radius=78, status_effect="stun"),
-                    3: MagicLevelStat(cooldown=0.8, damage=46, mana_cost=23, radius=95, status_effect="stun"),
-                },
-            ),
-        }
+    """마법 발동 및 자원 소모 제어 클래스."""
 
-    def locked_spells(self) -> list[Spell]:
-        return [spell for spell in self.spells.values() if not spell.is_unlocked()]
+    def __init__(self, scene: pygame.sprite.Sprite | any) -> None:
+        self.scene = scene
+        self.game_manager = GameManager()
 
-    def unlock_spell(self, spell: Spell) -> None:
-        spell.unlocked = True
-        spell.level = max(1, spell.level)
-
-    def unlock_spell_by_key(self, spell_key: str) -> Spell | None:
-        spell = self.spells.get(spell_key)
-        if spell is None:
-            return None
-        self.unlock_spell(spell)
-        return spell
-
-    def spell_for_combo(self, combo: list[str]) -> Spell | None:
-        if len(combo) < 2:
-            return None
-        pair = tuple(combo[-2:])
-        for spell in self.spells.values():
-            if spell.is_unlocked() and spell.combo == pair:
-                return spell
-        return None
-
-    def cast_by_combo(self, combo: list[str], player: Player, field, aim_pos: tuple[int, int]) -> str:
-        spell = self.spell_for_combo(combo)
-        if spell is None:
-            return "조합 없음"
-        return self.cast(spell, player, field, aim_pos)
-
-    def cast(
+    def cast_spell(
         self,
-        spell: Spell,
-        player: Player,
-        field,
-        aim_pos: tuple[int, int],
-        *,
-        ignore_requirements: bool = False,
-        consume_resources: bool = True,
-        origin_pos: tuple[int, int] | None = None,
-    ) -> str:
-        now = time.monotonic()
-        if not ignore_requirements and not spell.can_cast(player, now):
-            return "마나/쿨타임 부족"
+        spell_name: str,
+        target_pos: Optional[tuple[float, float]] = None,
+    ) -> bool:
+        """마법을 캐스팅하고 투사체를 스폰하거나 즉시 타격 효과를 실행한다.
 
-        stat = spell.stat
-        if consume_resources:
-            if not player.spend_mana(stat.mana_cost):
-                return "마나 부족"
-            spell.last_cast_time = now
+        Args:
+            spell_name: 발동할 마법명.
+            target_pos: 서브-Surface 기준 정규화 조준 좌표 (0.0~1.0). None이면 고정 방향.
 
-        cast_x, cast_y = origin_pos if origin_pos is not None else (PLAYER_X, PLAYER_Y)
+        Returns:
+            발동 성공 여부.
+        """
+        spell = SPELL_REGISTRY.get(spell_name)
+        if spell is None or not spell.unlocked:
+            return False
 
-        if spell.name == "매직 미사일":
-            targets = sorted(
-                [enemy for enemy in field.enemies if enemy.alive],
-                key=lambda enemy: enemy.distance_to(aim_pos),
-            )[: stat.target_count]
-            for target in targets:
-                field.projectiles.append(
-                    MagicMissile(
-                        x=cast_x,
-                        y=cast_y,
-                        target=target,
-                        damage=stat.damage,
-                        speed=stat.projectile_speed,
-                    )
-                )
-            return f"{spell.name} Lv.{spell.level}"
+        if not self.game_manager.is_spell_ready(spell_name):
+            return False
+        if self.game_manager.mp < spell.mp_cost:
+            return False
 
-        if spell.name == "폭발":
-            field.effects.append(Explosion(aim_pos[0], aim_pos[1], stat.damage, stat.radius))
-            return f"{spell.name} Lv.{spell.level}"
+        self.game_manager.mp -= spell.mp_cost
+        self.game_manager.start_spell_cooldown(spell_name, spell.cooldown)
 
-        if spell.name == "낙뢰":
-            field.effects.append(LightningStrike(aim_pos[0], aim_pos[1], stat.damage, stat.radius))
-            return f"{spell.name} Lv.{spell.level}"
+        active_field = self.game_manager.active_field
+        player = self.scene.player_left if active_field == 0 else self.scene.player_right
+        start_pos = player.rect.center
 
-        return "미구현 마법"
+        dir_x, dir_y = self._calc_direction(start_pos, target_pos, active_field)
 
-    def possible_spells(self, partial_combo: list[str]) -> list[Spell]:
-        unlocked_spells = [spell for spell in self.spells.values() if spell.is_unlocked()]
-        if not partial_combo:
-            return unlocked_spells
-        return [spell for spell in unlocked_spells if spell.combo[: len(partial_combo)] == tuple(partial_combo)]
+        if spell_name == "piercing_bullet":
+            proj = PiercingBullet(
+                x=float(start_pos[0]),
+                y=float(start_pos[1]),
+                speed_x=spell.speed * dir_x,
+                speed_y=spell.speed * dir_y,
+                damage=spell.damage,
+                field_id=active_field,
+                pierce_limit=spell.pierce_count,
+            )
+            self.scene.all_sprites.add(proj)
+            self.scene.projectiles.add(proj)
+
+        elif spell_name == "fireball":
+            proj = Fireball(
+                x=float(start_pos[0]),
+                y=float(start_pos[1]),
+                speed_x=spell.speed * dir_x,
+                speed_y=spell.speed * dir_y,
+                damage=spell.damage,
+                field_id=active_field,
+                explosion_radius=spell.aoe_radius,
+            )
+            self.scene.all_sprites.add(proj)
+            self.scene.projectiles.add(proj)
+
+        elif spell_name == "chain_lightning":
+            self._cast_chain_lightning(
+                start_pos, active_field,
+                chain_limit=spell.chain_count,
+                damage=spell.damage,
+            )
+
+        return True
+
+    # ── 헬퍼 ──────────────────────────────────────────────────────────────
+
+    def _calc_direction(
+        self,
+        start_pos: tuple[int, int],
+        target_pos: Optional[tuple[float, float]],
+        active_field: int,
+    ) -> tuple[float, float]:
+        """정규화 조준 좌표를 방향 벡터로 변환한다."""
+        if target_pos is not None:
+            target_px = target_pos[0] * SCREEN_WIDTH
+            target_py = target_pos[1] * _VIEW_HEIGHT
+            dx = target_px - float(start_pos[0])
+            dy = target_py - float(start_pos[1])
+            length = math.hypot(dx, dy)
+            if length >= 1.0:
+                return dx / length, dy / length
+        return (1.0 if active_field == 0 else -1.0), 0.0
+
+    def _cast_chain_lightning(
+        self,
+        start_pos: tuple[int, int],
+        field_id: int,
+        chain_limit: int,
+        damage: float,
+    ) -> None:
+        """체인 라이트닝 즉시 체이닝 타격 연산."""
+        enemies = [
+            sprite for sprite in self.scene.all_sprites
+            if hasattr(sprite, "field_id")
+            and sprite.field_id == field_id
+            and sprite not in self.scene.players
+            and hasattr(sprite, "take_damage")
+        ]
+
+        if not enemies:
+            target_x = SCREEN_WIDTH if field_id == 0 else 0
+            self.scene.add_lightning_effect([start_pos, (target_x, start_pos[1])], field_id)
+            return
+
+        chain_range = 350.0
+        chain_path: list[tuple[int, int]] = [start_pos]
+        current_pos = (float(start_pos[0]), float(start_pos[1]))
+        hit_enemies: list = []
+
+        for _ in range(chain_limit):
+            closest_enemy = None
+            min_dist = float("inf")
+
+            for enemy in enemies:
+                if enemy in hit_enemies:
+                    continue
+                dx = enemy.rect.centerx - current_pos[0]
+                dy = enemy.rect.centery - current_pos[1]
+                dist = math.sqrt(dx * dx + dy * dy)
+                if dist < min_dist and dist <= chain_range:
+                    min_dist = dist
+                    closest_enemy = enemy
+
+            if closest_enemy:
+                closest_enemy.take_damage(damage)
+                hit_enemies.append(closest_enemy)
+                current_pos = (float(closest_enemy.rect.centerx), float(closest_enemy.rect.centery))
+                chain_path.append(closest_enemy.rect.center)
+            else:
+                break
+
+        self.scene.add_lightning_effect(chain_path, field_id)

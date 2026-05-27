@@ -1,160 +1,143 @@
-"""적 유닛과 적 종류별 기본 스탯."""
+"""적 유닛 엔티티."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-import math
-
 import pygame
 
-from src.game.settings import COLOR_ENEMY, COLOR_ENEMY_FAST, COLOR_ENEMY_TANK, COLOR_HUD_HP, COLOR_STUN
+from src.game.settings import SCREEN_WIDTH
+
+from src.game.game_manager import GameManager
+
+# 기본 적 상수
+ENEMY_SIZE = 64
+HP_BAR_HEIGHT = 6
+BODY_HEIGHT = 48
 
 
-@dataclass(frozen=True, slots=True)
-class EnemyStat:
-    """적 종류별 고정 스탯."""
+class Enemy(pygame.sprite.Sprite):
+    """적 캐릭터 클래스.
 
-    key: str
-    display_name: str
-    hp: float
-    speed: float
-    siege_damage: float
-    size: int
-    defense_rate: float = 0.0
+    지정된 전장에 스폰되어 플레이어 방향으로 이동하며,
+    체력이 모두 닳으면 소멸하고 플레이어에게 도달하면 피해를 준다.
+    """
 
+    def __init__(
+        self,
+        x: float,
+        y: float,
+        field_id: int,
+        hp: float = 50.0,
+        speed: float = 120.0,
+        damage: float = 10.0,
+        defense_rate: float = 0.0,
+    ) -> None:
+        """적 유닛을 초기화한다.
 
-ENEMY_STATS: dict[str, EnemyStat] = {
-    "normal": EnemyStat(
-        key="normal",
-        display_name="일반 적",
-        hp=40.0,
-        speed=62.0,
-        siege_damage=8.0,
-        size=28,
-        defense_rate=0.0,
-    ),
-    "fast": EnemyStat(
-        key="fast",
-        display_name="빠른 적",
-        hp=24.0,
-        speed=108.0,
-        siege_damage=6.0,
-        size=22,
-        defense_rate=0.0,
-    ),
-    "tank": EnemyStat(
-        key="tank",
-        display_name="탱커 적",
-        hp=95.0,
-        speed=36.0,
-        siege_damage=16.0,
-        size=42,
-        defense_rate=0.10,
-    ),
-}
+        Args:
+            x: 초기 X 좌표.
+            y: 초기 Y 좌표.
+            field_id: 소속된 전장 ID.
+            hp: 적 체력.
+            speed: 이동 속도.
+            damage: 플레이어에게 가하는 피해량.
+            defense_rate: 받는 피해 감소율 (0.0 ~ 1.0).
+        """
+        super().__init__()
+        self.field_id = field_id
+        self.max_hp = hp
+        self.hp = hp
+        self.speed = speed
+        self.damage = damage
+        self.defense_rate = defense_rate
+        self.game_manager = GameManager()
 
+        # Surface 준비 (투명 배경 지원)
+        self.image = pygame.Surface((ENEMY_SIZE, ENEMY_SIZE), pygame.SRCALPHA)
+        self.rect = self.image.get_rect()
+        self.rect.center = (int(x), int(y))
 
-@dataclass(slots=True)
-class StatusEffect:
-    kind: str
-    duration: float
-    tick_damage: float = 0.0
-    tick_interval: float = 1.0
-    tick_timer: float = 0.0
+        self.pos_x = float(self.rect.centerx)
+        self.pos_y = float(self.rect.centery)
 
+        # 초기 그래픽 렌더링
+        self._redraw()
 
-@dataclass(slots=True)
-class Enemy:
-    x: float
-    y: float
-    hp: float = 35.0
-    max_hp: float = 35.0
-    speed: float = 65.0
-    siege_damage: float = 8.0
-    size: int = 28
-    enemy_type: str = "normal"
-    defense_rate: float = 0.0
-    field_index: int = 0
-    status_effects: list[StatusEffect] = field(default_factory=list)
-    reached_base: bool = False
+    def _redraw(self) -> None:
+        """적의 현재 상태(체력 등)에 맞춰 이미지를 다시 그린다."""
+        self.image.fill((0, 0, 0, 0))  # 투명화 클리어
 
-    @classmethod
-    def from_type(cls, enemy_type: str, x: float, y: float, field_index: int = 0) -> "Enemy":
-        stat = ENEMY_STATS[enemy_type]
-        return cls(
-            x=x,
-            y=y,
-            hp=stat.hp,
-            max_hp=stat.hp,
-            speed=stat.speed,
-            siege_damage=stat.siege_damage,
-            size=stat.size,
-            enemy_type=stat.key,
-            defense_rate=stat.defense_rate,
-            field_index=field_index,
+        # 1. 적 바디 그리기 (붉은색 계열)
+        body_y = ENEMY_SIZE - BODY_HEIGHT
+        pygame.draw.rect(
+            self.image,
+            (231, 76, 60),  # Crimson Red
+            (8, body_y, ENEMY_SIZE - 16, BODY_HEIGHT),
+            border_radius=6
+        )
+        pygame.draw.rect(
+            self.image,
+            (192, 57, 43),  # Darker Red border
+            (8, body_y, ENEMY_SIZE - 16, BODY_HEIGHT),
+            width=2,
+            border_radius=6
         )
 
-    @property
-    def alive(self) -> bool:
-        return self.hp > 0 and not self.reached_base
-
-    @property
-    def rect(self) -> pygame.Rect:
-        return pygame.Rect(
-            int(self.x - self.size / 2),
-            int(self.y - self.size / 2),
-            self.size,
-            self.size,
+        # 2. 체력 바 그리기 (HP 잔여량 비율 적용)
+        hp_ratio = max(0.0, min(1.0, self.hp / self.max_hp))
+        bar_y = 2
+        # 체력 바 배경 (어두운 빨강)
+        pygame.draw.rect(
+            self.image,
+            (120, 20, 20),
+            (4, bar_y, ENEMY_SIZE - 8, HP_BAR_HEIGHT),
+            border_radius=2
         )
+        # 현재 체력 (초록색)
+        if hp_ratio > 0:
+            pygame.draw.rect(
+                self.image,
+                (46, 204, 113),
+                (4, bar_y, int((ENEMY_SIZE - 8) * hp_ratio), HP_BAR_HEIGHT),
+                border_radius=2
+            )
 
-    def distance_to(self, pos: tuple[float, float]) -> float:
-        return math.hypot(self.x - pos[0], self.y - pos[1])
+    def update(self, dt: float) -> None:
+        """이동 업데이트 및 플레이어 충전선 도달 검사.
+
+        Args:
+            dt: 이전 프레임으로부터 경과된 시간(초).
+        """
+        # 1. 이동 제어 (비대칭 전장 구조 반영)
+        # Field 0: 플레이어가 왼쪽에 있으므로 오른쪽에서 왼쪽으로 이동 (x 감소)
+        # Field 1: 플레이어가 오른쪽에 있으므로 왼쪽에서 오른쪽으로 이동 (x 증가)
+        if self.field_id == 0:
+            self.pos_x -= self.speed * dt
+            # Field 0: 오른쪽에서 왼쪽으로 이동 → 플레이어 기지선 x=200 도달 시 공격
+            if self.pos_x <= 200.0:
+                self._attack_player()
+        elif self.field_id == 1:
+            self.pos_x += self.speed * dt
+            # Field 1: 왼쪽에서 오른쪽으로 이동 → 플레이어 기지선 x=SCREEN_WIDTH-200 도달 시 공격
+            if self.pos_x >= float(SCREEN_WIDTH - 200):
+                self._attack_player()
+
+        # 좌표 반영
+        self.rect.centerx = int(self.pos_x)
+        self._redraw()
+
+    def _attack_player(self) -> None:
+        """플레이어에게 직접 데미지를 가하고 본인은 소멸한다."""
+        self.game_manager.take_damage(self.damage)
+        self.kill()
 
     def take_damage(self, amount: float) -> None:
-        reduced = amount * max(0.0, 1.0 - self.defense_rate)
-        self.hp -= reduced
+        """피해를 입고 체력이 0이 되면 소멸한다.
 
-    def apply_status(self, effect: StatusEffect) -> None:
-        self.status_effects.append(effect)
-
-    def update(self, dt: float, base_line_x: float) -> None:
-        stunned = False
-        for effect in list(self.status_effects):
-            effect.duration -= dt
-            if effect.kind == "stun":
-                stunned = True
-            elif effect.kind == "dot":
-                effect.tick_timer -= dt
-                if effect.tick_timer <= 0:
-                    self.take_damage(effect.tick_damage)
-                    effect.tick_timer = effect.tick_interval
-            if effect.duration <= 0:
-                self.status_effects.remove(effect)
-
-        if not stunned:
-            self.x -= self.speed * dt
-
-        if self.x <= base_line_x:
-            self.reached_base = True
-
-    def draw(self, surface: pygame.Surface, active: bool = True) -> None:
-        if self.enemy_type == "fast":
-            color = COLOR_ENEMY_FAST
-        elif self.enemy_type == "tank":
-            color = COLOR_ENEMY_TANK
-        else:
-            color = COLOR_ENEMY
-        if not active:
-            color = tuple(max(0, c // 2) for c in color)
-        pygame.draw.circle(surface, color, (int(self.x), int(self.y)), self.size // 2)
-
-        if any(effect.kind == "stun" for effect in self.status_effects):
-            pygame.draw.circle(surface, COLOR_STUN, (int(self.x), int(self.y)), self.size // 2 + 4, 2)
-
-        bar_w = self.size + 12
-        bar_h = 5
-        ratio = max(0.0, min(1.0, self.hp / self.max_hp))
-        bg = pygame.Rect(int(self.x - bar_w / 2), int(self.y + self.size / 2 + 4), bar_w, bar_h)
-        fg = pygame.Rect(bg.x, bg.y, int(bar_w * ratio), bar_h)
-        pygame.draw.rect(surface, (60, 60, 70), bg)
-        pygame.draw.rect(surface, COLOR_HUD_HP, fg)
+        Args:
+            amount: 받을 데미지 양 (방어율 적용 전).
+        """
+        actual = amount * (1.0 - self.defense_rate)
+        self.hp = max(0.0, self.hp - actual)
+        if self.hp <= 0.0:
+            self.game_manager.score += 10
+            self.kill()

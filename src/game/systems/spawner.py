@@ -1,132 +1,103 @@
 """웨이브 기반 적 스폰 시스템.
 
 이 파일은 스폰 테이블과 스폰 흐름만 관리한다.
-적 종류별 실제 스탯은 src.game.entities.enemy.ENEMY_STATS에 둔다.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import random
+from typing import TYPE_CHECKING
 
-from src.game.entities.enemy import ENEMY_STATS, Enemy
-from src.game.settings import SCREEN_HEIGHT, SCREEN_WIDTH, WAVE_CLEAR_DELAY
+from src.game.entities.enemy import Enemy
+from src.game.game_manager import GameManager
+from src.game.settings import SCREEN_HEIGHT, SCREEN_WIDTH, TILE_SIZE
 
+if TYPE_CHECKING:
+    from src.game.scenes.battle import BattleScene
 
-@dataclass(frozen=True, slots=True)
-class SpawnEntry:
-    enemy_key: str
-    weight: int
-
-
-@dataclass(frozen=True, slots=True)
-class SpawnPlan:
-    total_count: int
-    spawn_interval: float
-    entries: tuple[SpawnEntry, ...]
-
-    def choose_enemy_key(self) -> str:
-        keys = [entry.enemy_key for entry in self.entries]
-        weights = [entry.weight for entry in self.entries]
-        selected_key = random.choices(keys, weights=weights, k=1)[0]
-        if selected_key not in ENEMY_STATS:
-            raise KeyError(f"등록되지 않은 적 종류입니다: {selected_key}")
-        return selected_key
+# 웨이브 진행 주기(초)
+_WAVE_DURATION: float = 30.0
+# 최소 스폰 간격(초)
+_MIN_SPAWN_INTERVAL: float = 0.8
+# 웨이브당 스폰 간격 감소량(초)
+_INTERVAL_STEP: float = 0.15
+# 웨이브당 적 스텟 스케일 증가율
+_STAT_SCALE_PER_WAVE: float = 0.15
+# 웨이브 3마다 동시 스폰 수 +1 (최대 5)
+_SPAWN_COUNT_STEP: int = 3
+_MAX_SPAWN_COUNT: int = 5
 
 
-SPAWN_TABLES: tuple[SpawnPlan, ...] = (
-    # Stage 1: 일반 적만 등장
-    SpawnPlan(
-        total_count=11,
-        spawn_interval=0.95,
-        entries=(SpawnEntry("normal", 100),),
-    ),
-    # Stage 2: 빠른 적 소량 추가
-    SpawnPlan(
-        total_count=14,
-        spawn_interval=0.82,
-        entries=(SpawnEntry("normal", 85), SpawnEntry("fast", 15)),
-    ),
-    # Stage 3: 느린 탱커 적 추가
-    SpawnPlan(
-        total_count=17,
-        spawn_interval=0.70,
-        entries=(SpawnEntry("normal", 70), SpawnEntry("fast", 20), SpawnEntry("tank", 10)),
-    ),
-    # Stage 4: 특수 적 비율 증가
-    SpawnPlan(
-        total_count=21,
-        spawn_interval=0.58,
-        entries=(SpawnEntry("normal", 55), SpawnEntry("fast", 30), SpawnEntry("tank", 15)),
-    ),
-    # Stage 5: 일반 적보다 특수 적 비율이 더 커짐
-    SpawnPlan(
-        total_count=25,
-        spawn_interval=0.48,
-        entries=(SpawnEntry("normal", 42), SpawnEntry("fast", 38), SpawnEntry("tank", 20)),
-    ),
-    # Stage 6 이후: 고난도 반복 테이블
-    SpawnPlan(
-        total_count=30,
-        spawn_interval=0.38,
-        entries=(SpawnEntry("normal", 30), SpawnEntry("fast", 45), SpawnEntry("tank", 25)),
-    ),
-)
+class Spawner:
+    """웨이브 번호에 따라 적 스텟·스폰 간격·동시 출현 수를 조정하는 클래스."""
 
+    def __init__(self, scene: BattleScene) -> None:
+        self.scene = scene
+        self.game_manager = GameManager()
+        self._spawn_timer: float = 0.0
+        self._wave_timer: float = 0.0
 
-@dataclass(slots=True)
-class WaveSpawner:
-    stage: int = 1
-    wave: int = 1
-    spawned_count: int = 0
-    defeated_count: int = 0
-    spawn_timer: float = 0.0
-    clear_timer: float = 0.0
-    current_plan: SpawnPlan = field(default_factory=lambda: SPAWN_TABLES[0])
-
-    def start_stage(self, stage: int) -> None:
-        self.stage = stage
-        self.wave = stage
-        self.spawned_count = 0
-        self.defeated_count = 0
-        self.spawn_timer = 0.0
-        self.clear_timer = 0.0
-        self.current_plan = self._make_plan(stage)
-
-    def _make_plan(self, stage: int) -> SpawnPlan:
-        table_index = min(max(stage, 1), len(SPAWN_TABLES)) - 1
-        return SPAWN_TABLES[table_index]
-
-    def record_defeated(self, count: int = 1) -> None:
-        self.defeated_count = min(self.current_plan.total_count, self.defeated_count + count)
-
-    def update(self, dt: float, fields: list, active_field_index: int) -> bool:
-        """스폰 진행. 스테이지 클리어 시 True 반환."""
-        self.spawn_timer -= dt
-        if self.spawned_count < self.current_plan.total_count and self.spawn_timer <= 0:
-            self.spawn_timer = self.current_plan.spawn_interval
-            field_index = self.spawned_count % len(fields)
-            y_margin = 90
-            enemy_key = self.current_plan.choose_enemy_key()
-            enemy = Enemy.from_type(
-                enemy_type=enemy_key,
-                x=SCREEN_WIDTH + 35,
-                y=random.randint(y_margin, SCREEN_HEIGHT - y_margin),
-                field_index=field_index,
-            )
-            fields[field_index].enemies.append(enemy)
-            self.spawned_count += 1
-
-        all_spawned = self.spawned_count >= self.current_plan.total_count
-        all_dead = all(not field.enemies for field in fields)
-        if all_spawned and all_dead:
-            self.clear_timer += dt
-            if self.clear_timer >= WAVE_CLEAR_DELAY:
-                return True
-        else:
-            self.clear_timer = 0.0
-        return False
+    # ── 현재 웨이브 기반 파생 값 ────────────────────────────────────────
 
     @property
-    def remaining_to_spawn(self) -> int:
-        return max(0, self.current_plan.total_count - self.spawned_count)
+    def spawn_interval(self) -> float:
+        """현재 웨이브에 따른 스폰 간격(초). 웨이브가 높을수록 빠름."""
+        wave = self.game_manager.current_wave
+        return max(_MIN_SPAWN_INTERVAL, 2.5 - (wave - 1) * _INTERVAL_STEP)
+
+    @property
+    def spawn_count(self) -> int:
+        """한 번에 전장당 스폰할 적 수."""
+        wave = self.game_manager.current_wave
+        return min(_MAX_SPAWN_COUNT, 1 + (wave - 1) // _SPAWN_COUNT_STEP)
+
+    def _enemy_stats(self) -> dict:
+        """현재 웨이브에 맞게 스케일된 적 스텟 딕셔너리."""
+        wave = self.game_manager.current_wave
+        scale = 1.0 + (wave - 1) * _STAT_SCALE_PER_WAVE
+        # 웨이브 5 이상부터 방어율 소폭 부여 (최대 30%)
+        defense = min(0.30, max(0.0, (wave - 4) * 0.03))
+        return {
+            "hp": 50.0 * scale,
+            "speed": min(220.0, 120.0 + (wave - 1) * 6.0),
+            "damage": 10.0 * scale,
+            "defense_rate": defense,
+        }
+
+    # ── 업데이트 ────────────────────────────────────────────────────────
+
+    def update(self, dt: float) -> None:
+        """스폰 타이머와 웨이브 타이머를 업데이트한다."""
+        # 웨이브 진행 (보상 선택 대기 중에는 타이머 멈춤)
+        if not self.game_manager.reward_pending:
+            self._wave_timer += dt
+        if self._wave_timer >= _WAVE_DURATION:
+            self._wave_timer = 0.0
+            self.game_manager.current_wave += 1
+            self.game_manager.reward_pending = True
+
+        # 적 스폰
+        self._spawn_timer += dt
+        if self._spawn_timer >= self.spawn_interval:
+            self._spawn_timer = 0.0
+            self._spawn_enemies()
+
+    def _spawn_enemies(self) -> None:
+        """현재 웨이브 스텟으로 양쪽 전장에 적을 스폰한다."""
+        stats = self._enemy_stats()
+        count = self.spawn_count
+        # 화면 상하 여백(TILE_SIZE)을 제외한 Y 범위
+        y_min = float(TILE_SIZE)
+        y_max = float(SCREEN_HEIGHT - TILE_SIZE * 2)
+
+        for _ in range(count):
+            # Field 0: 화면 오른쪽 끝에서 스폰, 왼쪽으로 이동
+            y0 = random.uniform(y_min, y_max)
+            e0 = Enemy(x=float(SCREEN_WIDTH + 32), y=y0, field_id=0, **stats)
+
+            # Field 1: 화면 왼쪽 끝에서 스폰, 오른쪽으로 이동
+            y1 = random.uniform(y_min, y_max)
+            e1 = Enemy(x=-32.0, y=y1, field_id=1, **stats)
+
+            self.scene.all_sprites.add(e0, e1)
+            self.scene.enemies.add(e0, e1)

@@ -1,321 +1,302 @@
-"""전투 씬 — 2개 전장 전환 방식."""
+"""전투 씬 — Tab으로 전환하는 전체화면 전장 2개."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from pathlib import Path
+
 import pygame
 
-from src.game.entities.enemy import Enemy
 from src.game.entities.player import Player
-from src.game.entities.projectile import Explosion, LightningStrike, MagicMissile
-from src.game.settings import (
-    BASE_LINE_X,
-    BATTLE_BACKGROUND_FILES,
-    COLOR_BASE,
-    COLOR_FIELD_BG,
-    COLOR_INACTIVE_FIELD_BG,
-    COLOR_MUTED,
-    COLOR_WHITE,
-    GESTURE_PAPER,
-    GESTURE_ROCK,
-    GESTURE_SCISSORS,
-    NUM_FIELDS,
-    PLAYER_X,
-    PLAYER_Y,
-    SCREEN_HEIGHT,
-    SCREEN_WIDTH,
-)
+from src.game.game_manager import GameManager
+from src.game.settings import SCREEN_HEIGHT, SCREEN_WIDTH, TILE_SIZE
 from src.game.systems.magic import MagicSystem
-from src.game.systems.spawner import WaveSpawner
-from src.game.ui.crosshair import Crosshair
-from src.game.systems.reward import RewardOption, RewardSystem
+from src.game.systems.spawner import Spawner
+from src.game.ui.crosshair import draw_crosshair
 from src.game.ui.fonts import get_font
-from src.game.ui.hud import Hud
-from src.game.scenes.unlock import UnlockScene
 
+# 배경 이미지 경로 (Field 0 → ice, Field 1 → fire)
+_BG_PATHS: tuple[str, str] = (
+    "assets/maps/ice_battle.png",
+    "assets/maps/fire_battle.png",
+)
 
-@dataclass(slots=True)
-class BattleField:
-    index: int
-    background: pygame.Surface | None = None
-    enemies: list[Enemy] = field(default_factory=list)
-    projectiles: list[MagicMissile] = field(default_factory=list)
-    effects: list[Explosion | LightningStrike] = field(default_factory=list)
-    @property
-    def remaining_enemies(self) -> int:
-        return sum(1 for enemy in self.enemies if enemy.alive)
+# Field별 테마 색상 (배경 로드 실패 시 폴백 + 번개 이펙트)
+_FIELD_SKY_COLOR: tuple[tuple[int, int, int], tuple[int, int, int]] = (
+    (24, 28, 40),   # Field 0 — 차가운 남색
+    (32, 18, 28),   # Field 1 — 뜨거운 붉은 계열
+)
+_FIELD_GROUND_COLOR: tuple[tuple[int, int, int], tuple[int, int, int]] = (
+    (41, 128, 185),   # Field 0 — 얼음 블루
+    (142, 44, 44),    # Field 1 — 용암 적색
+)
+_FIELD_LIGHTNING_COLOR: tuple[tuple[int, int, int], tuple[int, int, int]] = (
+    (52, 152, 219),   # Field 0
+    (155, 89, 182),   # Field 1
+)
 
-    def update(self, dt: float, player: Player) -> int:
-        defeated_count = 0
-        for enemy in list(self.enemies):
-            enemy.update(dt, BASE_LINE_X)
-            if enemy.reached_base:
-                player.take_damage(enemy.siege_damage)
-                self.enemies.remove(enemy)
-            elif not enemy.alive:
-                defeated_count += 1
-                self.enemies.remove(enemy)
-
-        for projectile in list(self.projectiles):
-            projectile.update(dt)
-            if not projectile.alive:
-                self.projectiles.remove(projectile)
-
-        for effect in list(self.effects):
-            effect.update(dt, self.enemies)
-            if not effect.alive:
-                self.effects.remove(effect)
-
-        return defeated_count
-
-    def draw(self, surface: pygame.Surface, active: bool) -> None:
-        field_rect = pygame.Rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT)
-        if self.background is not None:
-            surface.blit(self.background, (0, 0))
-            if not active:
-                inactive_overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-                inactive_overlay.fill((0, 0, 0, 120))
-                surface.blit(inactive_overlay, (0, 0))
-        else:
-            pygame.draw.rect(surface, COLOR_FIELD_BG if active else COLOR_INACTIVE_FIELD_BG, field_rect)
-
-        # 좌측 기지 라인과 플레이어
-        pygame.draw.line(surface, COLOR_BASE, (BASE_LINE_X, 70), (BASE_LINE_X, SCREEN_HEIGHT - 70), 5)
-        pygame.draw.circle(surface, (90, 170, 255), (PLAYER_X, PLAYER_Y), 22)
-        pygame.draw.circle(surface, COLOR_WHITE, (PLAYER_X, PLAYER_Y), 26, 2)
-
-        for enemy in self.enemies:
-            enemy.draw(surface, active)
-        for projectile in self.projectiles:
-            projectile.draw(surface)
-        for effect in self.effects:
-            effect.draw(surface)
+# 미니맵 레이아웃
+_MINI_W: int = 260
+_MINI_H: int = 146
+_MINI_MARGIN: int = 18
 
 
 class BattleScene:
-    mouse_visible = False
+    """전투 씬 클래스.
+
+    두 개의 독립된 전장(Field 0: 얼음, Field 1: 화염)을 각각 전체 화면으로 렌더링하며,
+    Tab 키로 활성 전장을 전환한다. 비활성 전장은 우하단 미니맵으로 표시된다.
+    """
 
     def __init__(self) -> None:
-        self.player = Player()
-        self.field_backgrounds = self._load_field_backgrounds()
-        self.fields = [BattleField(index=i, background=self.field_backgrounds[i % len(self.field_backgrounds)] if self.field_backgrounds else None) for i in range(NUM_FIELDS)]
-        self.active_field_index = 0
-        self.spawner = WaveSpawner()
-        self.magic = MagicSystem()
-        self.hud = Hud()
-        self.reward_system = RewardSystem()
-        self.reward_options: list[RewardOption] = []
-        self.crosshair = Crosshair()
-        self.current_combo: list[str] = []
-        self.aim_pos = (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
-        self.message = ""
-        self.message_timer = 0.0
-        self.reward_pending = False
-        self.unlock_scene = UnlockScene()
-        self.next_scene: str | None = None
-        self.result_cleared_stage = 0
-        self.game_over = False
+        """전투 씬을 초기화한다."""
+        self.game_manager = GameManager()
 
-    def _load_field_backgrounds(self) -> list[pygame.Surface]:
-        project_root = Path(__file__).resolve().parents[3]
-        backgrounds: list[pygame.Surface] = []
-        for relative_path in BATTLE_BACKGROUND_FILES:
-            image_path = project_root / relative_path
-            if not image_path.exists():
-                continue
-            image = pygame.image.load(str(image_path)).convert()
-            image = pygame.transform.smoothscale(image, (SCREEN_WIDTH, SCREEN_HEIGHT))
-            backgrounds.append(image)
-        return backgrounds
+        # 스프라이트 그룹
+        self.all_sprites = pygame.sprite.Group()
+        self.players = pygame.sprite.Group()
+        self.projectiles = pygame.sprite.Group()
+        self.enemies = pygame.sprite.Group()
 
-    @property
-    def active_field(self) -> BattleField:
-        return self.fields[self.active_field_index]
+        # 전투 시스템
+        from src.game.systems.combat import CombatSystem
+        self.combat = CombatSystem(self)
 
-    @property
-    def total_remaining_enemies(self) -> int:
-        alive = sum(field.remaining_enemies for field in self.fields)
-        return alive + self.spawner.remaining_to_spawn
+        # 전체화면 뷰 크기
+        self.view_width: int = SCREEN_WIDTH
+        self.view_height: int = SCREEN_HEIGHT
 
-    def handle_event(self, event: pygame.event.Event) -> None:
-        if self.unlock_scene.pending:
-            self._handle_unlock_event(event)
-            return
+        # 각 전장 렌더링용 서브 Surface (캐싱)
+        self.field_surfaces: list[pygame.Surface] = [
+            pygame.Surface((self.view_width, self.view_height)),
+            pygame.Surface((self.view_width, self.view_height)),
+        ]
 
-        if self.reward_pending:
-            self._handle_reward_event(event)
-            return
+        # 미니맵 Surface
+        self.mini_surface = pygame.Surface((_MINI_W, _MINI_H))
 
-        if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_TAB:
-                self.active_field_index = (self.active_field_index + 1) % len(self.fields)
-                self.message = f"전장 {self.active_field_index + 1}로 전환"
-                self.message_timer = 1.2
-            elif event.key == pygame.K_q:
-                self._push_gesture(GESTURE_SCISSORS)
-            elif event.key == pygame.K_w:
-                self._push_gesture(GESTURE_ROCK)
-            elif event.key == pygame.K_e:
-                self._push_gesture(GESTURE_PAPER)
-        elif event.type == pygame.MOUSEMOTION:
-            self.aim_pos = event.pos
-        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            self.message = self.magic.cast_by_combo(
-                self.current_combo,
-                self.player,
-                self.active_field,
-                self.aim_pos,
-            )
-            self.message_timer = 1.4
-            self.current_combo.clear()
+        # 배경 이미지 로드
+        self.backgrounds: list[pygame.Surface | None] = self._load_backgrounds()
 
-    def _push_gesture(self, gesture: str) -> None:
-        self.current_combo.append(gesture)
-        if len(self.current_combo) > 2:
-            self.current_combo.pop(0)
-        self.message = "입력: " + " + ".join({"scissors": "가위", "rock": "바위", "paper": "보"}.get(g, g) for g in self.current_combo)
-        self.message_timer = 1.2
+        # 플레이어 Y 좌표 — 지면(TILE_SIZE) 위
+        ground_y = self.view_height - TILE_SIZE
+        self.player_y = float(ground_y - TILE_SIZE // 2)
 
-    def _handle_unlock_event(self, event: pygame.event.Event) -> None:
-        if event.type == pygame.KEYDOWN and event.key in (pygame.K_RETURN, pygame.K_SPACE):
-            self._close_unlock_scene()
-        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            self._close_unlock_scene()
+        # Field 0 플레이어 (좌측), Field 1 플레이어 (우측)
+        self.player_left = Player(x=200.0, y=self.player_y, field_id=0)
+        self.player_right = Player(x=float(SCREEN_WIDTH - 200), y=self.player_y, field_id=1)
 
-    def _handle_reward_event(self, event: pygame.event.Event) -> None:
-        if event.type == pygame.KEYDOWN:
-            key_to_index = {pygame.K_1: 0, pygame.K_2: 1, pygame.K_3: 2}
-            if event.key in key_to_index:
-                self._select_reward(key_to_index[event.key])
-        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            for index, _option in enumerate(self.reward_options):
-                if self.hud.reward_card_rect(index, len(self.reward_options)).collidepoint(event.pos):
-                    self._select_reward(index)
-                    break
+        self.players.add(self.player_left, self.player_right)
+        self.all_sprites.add(self.player_left, self.player_right)
 
-    def _open_reward_selection(self) -> None:
-        self.reward_pending = True
-        pygame.mouse.set_visible(True)
-        self.reward_options = self.reward_system.make_options(self.player, self.magic, 3)
-        self.message = "스테이지 클리어! 보상 1개를 선택하면 다음 스테이지로 진행"
-        self.message_timer = 3.0
+        # 마법·스폰 시스템
+        self.magic_system = MagicSystem(self)
+        self.spawner = Spawner(self)
 
-    def _select_reward(self, index: int) -> None:
-        if index < 0 or index >= len(self.reward_options):
-            return
-        self.message = self.reward_system.apply(self.reward_options[index], self.player, self.magic)
-        self.message_timer = 2.0
-        self.reward_pending = False
-        self.reward_options.clear()
-        self.current_combo.clear()
+        # 번개 이펙트 목록 [{"path": [...], "timer": float, "field_id": int}]
+        self.lightning_effects: list[dict] = []
 
-        next_stage = self.spawner.stage + 1
-        if self.unlock_scene.should_open(next_stage, self.magic):
-            unlock_spell = self.unlock_scene.next_unlock_spell(self.magic)
-            if unlock_spell is not None:
-                self._open_unlock_scene(unlock_spell, next_stage)
-                return
+        # HUD 보조 폰트
+        self.font = get_font(22, bold=True)
+        self.font_small = get_font(17, bold=True)
 
-        pygame.mouse.set_visible(False)
-        self.spawner.start_stage(next_stage)
+    # ── 공개 API ──────────────────────────────────────────────────────────
 
-    def _open_unlock_scene(self, spell, next_stage: int) -> None:
-        self.unlock_scene.open(spell, next_stage)
-        pygame.mouse.set_visible(True)
-        self.message = f"새 스킬 해금: {spell.name}"
-        self.message_timer = 2.0
+    def handle_spell_input(
+        self,
+        spell_name: str,
+        target_pos: tuple[float, float] | None = None,
+    ) -> bool:
+        """마법 발동 요청을 받아 마법 시스템을 격발시킨다.
 
-    def _close_unlock_scene(self) -> None:
-        unlocked_name = self.unlock_scene.close(self.magic)
-        pygame.mouse.set_visible(False)
-        self.spawner.start_stage(self.unlock_scene.next_stage)
-        self.message = f"{unlocked_name} 해금! Stage {self.spawner.stage} 시작"
-        self.message_timer = 1.5
+        Args:
+            spell_name: 발동할 마법명.
+            target_pos: 정규화 조준 좌표 (x: 0.0~1.0, y: 0.0~1.0). None이면 고정 방향.
 
-    def _open_result_scene(self) -> None:
-        if self.game_over:
-            return
-        self.game_over = True
-        self.result_cleared_stage = max(0, self.spawner.stage - 1)
-        self.next_scene = "result"
+        Returns:
+            발동 성공 여부.
+        """
+        return self.magic_system.cast_spell(spell_name, target_pos)
+
+    def add_lightning_effect(self, path: list[tuple[int, int]], field_id: int) -> None:
+        """체인 라이트닝 경로를 수신하여 이펙트를 예약한다.
+
+        Args:
+            path: 번개가 경유하는 좌표 리스트.
+            field_id: 전장 ID.
+        """
+        self.lightning_effects.append({
+            "path": path,
+            "timer": 0.18,
+            "field_id": field_id,
+        })
+
+    # ── 업데이트 ──────────────────────────────────────────────────────────
 
     def update(self, dt: float) -> None:
-        if self.unlock_scene.pending:
-            self.unlock_scene.update(dt, self.magic)
-            self.message_timer = max(0.0, self.message_timer - dt)
-            return
+        """모든 전장 엔티티를 실시간으로 업데이트한다.
 
-        if self.reward_pending:
-            self.message_timer = max(0.0, self.message_timer - dt)
-            return
+        Args:
+            dt: 이전 프레임으로부터 경과된 시간(초).
+        """
+        self.spawner.update(dt)
 
-        keys = pygame.key.get_pressed()
-        if keys[pygame.K_SPACE]:
-            self.player.charge_mana(dt)
+        for effect in self.lightning_effects[:]:
+            effect["timer"] -= dt
+            if effect["timer"] <= 0.0:
+                self.lightning_effects.remove(effect)
 
-        for field in self.fields:
-            defeated = field.update(dt, self.player)
-            if defeated:
-                self.spawner.record_defeated(defeated)
+        self.all_sprites.update(dt)
+        self.combat.update()
 
-        if not self.player.alive:
-            self._open_result_scene()
-            return
+    # ── 렌더링 ────────────────────────────────────────────────────────────
 
-        stage_cleared = self.spawner.update(dt, self.fields, self.active_field_index)
-        if stage_cleared:
-            self._open_reward_selection()
+    def draw(self, screen: pygame.Surface, selected_spell: str | None = None) -> None:
+        """활성 전장을 전체 화면으로, 비활성 전장을 미니맵으로 렌더링한다.
 
-        self.message_timer = max(0.0, self.message_timer - dt)
+        Args:
+            screen: 렌더링할 Pygame 화면 Surface.
+            selected_spell: 현재 발동 대기 중인 마법 이름. None이면 대기 없음.
+        """
+        charged = selected_spell is not None
+        active = self.game_manager.active_field
+        inactive = 1 - active
 
-    def draw(self, surface: pygame.Surface) -> None:
-        self.active_field.draw(surface, active=True)
-        self._draw_inactive_field_minimap(surface)
-        self.crosshair.draw(surface, self.aim_pos)
-        self.hud.draw(
-            surface=surface,
-            player=self.player,
-            stage=self.spawner.stage,
-            active_field_index=self.active_field_index,
-            fields=self.fields,
-            remaining_enemies=self.total_remaining_enemies,
-            current_combo=self.current_combo,
-            spells=self.magic.possible_spells(self.current_combo),
-            message=self.message if self.message_timer > 0 else "",
-            reward_options=self.reward_options if self.reward_pending else None,
+        # 두 전장 모두 백버퍼에 그리기 (미니맵·전환 효과 위해)
+        self._draw_field(self.field_surfaces[0], field_id=0, active=(active == 0), charged=charged)
+        self._draw_field(self.field_surfaces[1], field_id=1, active=(active == 1), charged=charged)
+
+        # ── 1. 활성 전장 → 전체 화면 합성 ──
+        screen.blit(self.field_surfaces[active], (0, 0))
+
+        # ── 2. 비활성 전장 → 우하단 미니맵 ──
+        self._draw_minimap(screen, inactive)
+
+        # ── 3. 전환 UI: 탭 힌트 (상단 중앙) ──
+        self._draw_field_tab_bar(screen, active)
+
+    # ── 내부 렌더링 헬퍼 ──────────────────────────────────────────────────
+
+    def _draw_field(
+        self,
+        surf: pygame.Surface,
+        field_id: int,
+        active: bool,
+        charged: bool,
+    ) -> None:
+        """지정된 Surface에 전장 한 개를 완전히 렌더링한다."""
+        ground_y = self.view_height - TILE_SIZE
+        bg = self.backgrounds[field_id]
+
+        # 배경
+        if bg is not None:
+            surf.blit(bg, (0, 0))
+        else:
+            surf.fill(_FIELD_SKY_COLOR[field_id])
+            pygame.draw.rect(surf, _FIELD_GROUND_COLOR[field_id],
+                             (0, ground_y, self.view_width, TILE_SIZE))
+            pygame.draw.rect(surf, (50, 50, 50),
+                             (0, ground_y, self.view_width, TILE_SIZE), width=2)
+
+        # 비활성 전장에 어두운 오버레이
+        if not active:
+            dim = pygame.Surface((self.view_width, self.view_height), pygame.SRCALPHA)
+            dim.fill((0, 0, 0, 110))
+            surf.blit(dim, (0, 0))
+
+        # 스프라이트 렌더링
+        for sprite in self.all_sprites:
+            if hasattr(sprite, "field_id") and sprite.field_id == field_id:
+                surf.blit(sprite.image, sprite.rect)
+
+        # 번개 이펙트
+        lc = _FIELD_LIGHTNING_COLOR[field_id]
+        for effect in self.lightning_effects:
+            if effect["field_id"] == field_id:
+                path = effect["path"]
+                for i in range(len(path) - 1):
+                    pygame.draw.line(surf, lc, path[i], path[i + 1], 4)
+                    pygame.draw.line(surf, (255, 255, 255), path[i], path[i + 1], 1)
+
+        # 크로스헤어 (활성 전장만)
+        if active:
+            mx, my = pygame.mouse.get_pos()
+            rx = max(0.0, min(1.0, mx / self.view_width))
+            ry = max(0.0, min(1.0, my / self.view_height))
+            draw_crosshair(surf, rx, ry, charged=charged)
+
+    def _draw_minimap(self, screen: pygame.Surface, field_id: int) -> None:
+        """비활성 전장을 우하단 미니맵으로 렌더링한다."""
+        # 전장 서브 Surface를 미니맵 크기로 스케일링
+        pygame.transform.scale(self.field_surfaces[field_id], (_MINI_W, _MINI_H), self.mini_surface)
+
+        mx = self.view_width - _MINI_W - _MINI_MARGIN
+        my = self.view_height - _MINI_H - _MINI_MARGIN
+
+        # 테두리 + 배경 패널
+        panel_rect = pygame.Rect(mx - 4, my - 4, _MINI_W + 8, _MINI_H + 8)
+        pygame.draw.rect(screen, (12, 14, 22), panel_rect, border_radius=10)
+        pygame.draw.rect(screen, (80, 90, 110), panel_rect, 2, border_radius=10)
+
+        screen.blit(self.mini_surface, (mx, my))
+
+        # 미니맵 테두리 강조
+        pygame.draw.rect(screen, (80, 90, 110),
+                         pygame.Rect(mx, my, _MINI_W, _MINI_H), 1, border_radius=4)
+
+        # 라벨
+        label = self.font_small.render(
+            f"FIELD {field_id}  [TAB]",
+            True, (200, 210, 230),
         )
-        if self.unlock_scene.pending and self.unlock_scene.spell is not None:
-            self.hud.draw_unlock_overlay(
-                surface,
-                self.unlock_scene.spell,
-                self.unlock_scene.demo_time,
-                self.unlock_scene.demo_field,
-            )
+        screen.blit(label, (mx + (_MINI_W - label.get_width()) // 2, my - 22))
 
+    def _draw_field_tab_bar(self, screen: pygame.Surface, active: int) -> None:
+        """상단 중앙에 Field 0 / Field 1 탭 인디케이터를 그린다."""
+        field_names = ["❄ FIELD 0 — ICE", "🔥 FIELD 1 — FIRE"]
+        tab_colors = [(100, 180, 255), (255, 120, 60)]
+        tab_w, tab_h = 220, 38
+        gap = 12
+        total_w = 2 * tab_w + gap
+        base_x = (self.view_width - total_w) // 2
+        base_y = 14
 
-    def _draw_inactive_field_minimap(self, surface: pygame.Surface) -> None:
-        mini_w, mini_h = 270, 124
-        x, y = SCREEN_WIDTH - mini_w - 20, SCREEN_HEIGHT - mini_h - 20
-        inactive_index = 1 - self.active_field_index
-        active = self.fields[self.active_field_index]
-        inactive = self.fields[inactive_index]
-        rect = pygame.Rect(x, y, mini_w, mini_h)
-        pygame.draw.rect(surface, (20, 22, 32), rect, border_radius=12)
-        pygame.draw.rect(surface, COLOR_MUTED, rect, 2, border_radius=12)
+        for i, (name, color) in enumerate(zip(field_names, tab_colors)):
+            tx = base_x + i * (tab_w + gap)
+            is_active = (i == active)
 
-        font = get_font(18)
-        title_font = get_font(20, bold=True)
-        total = self.spawner.current_plan.total_count
-        defeated = self.spawner.defeated_count
+            # 탭 배경
+            bg_color = (20, 22, 36) if not is_active else (color[0] // 5, color[1] // 5, color[2] // 5)
+            pygame.draw.rect(screen, bg_color, (tx, base_y, tab_w, tab_h), border_radius=8)
 
-        lines = [
-            (f"Wave Enemy  {defeated}/{total}", title_font),
-            (f"현재 전장 남은 적  {active.remaining_enemies}", font),
-            (f"반대 전장 남은 적  {inactive.remaining_enemies}", font),
-        ]
-        line_y = y + 14
-        for label_text, line_font in lines:
-            label = line_font.render(label_text, True, COLOR_WHITE)
-            surface.blit(label, (x + 14, line_y))
-            line_y += 32
+            # 탭 테두리 (활성: 해당 테마색, 비활성: 회색)
+            border_col = color if is_active else (60, 65, 80)
+            border_w = 3 if is_active else 1
+            pygame.draw.rect(screen, border_col, (tx, base_y, tab_w, tab_h),
+                             width=border_w, border_radius=8)
+
+            # 활성 탭 하단 강조선
+            if is_active:
+                pygame.draw.rect(screen, color, (tx + 8, base_y + tab_h - 4, tab_w - 16, 3),
+                                 border_radius=2)
+
+            # 텍스트
+            text_color = color if is_active else (100, 108, 128)
+            txt = self.font_small.render(name, True, text_color)
+            screen.blit(txt, (tx + (tab_w - txt.get_width()) // 2,
+                               base_y + (tab_h - txt.get_height()) // 2))
+
+    # ── 초기화 헬퍼 ───────────────────────────────────────────────────────
+
+    def _load_backgrounds(self) -> list[pygame.Surface | None]:
+        """배경 이미지를 로드하여 화면 크기에 맞게 스케일링한다."""
+        project_root = Path(__file__).resolve().parents[3]
+        result: list[pygame.Surface | None] = []
+        for path_str in _BG_PATHS:
+            full = project_root / path_str
+            if full.exists():
+                img = pygame.image.load(str(full)).convert()
+                img = pygame.transform.smoothscale(img, (self.view_width, self.view_height))
+                result.append(img)
+            else:
+                result.append(None)
+        return result

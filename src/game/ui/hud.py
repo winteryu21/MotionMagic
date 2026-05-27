@@ -1,352 +1,149 @@
-"""HUD — 체력/마나/스테이지/스킬 조합/보상 선택 표시."""
+"""HUD — 체력바, 마나바, 마법 쿨다운 핫바, 웨이브 표시."""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-import math
-import time
 import pygame
 
-from src.game.entities.player import Player
-from src.game.entities.enemy import Enemy
-from src.game.entities.projectile import Explosion, LightningStrike, MagicMissile
-from src.game.settings import COLOR_HUD_HP, COLOR_HUD_MP, COLOR_MUTED, COLOR_WHITE, SCREEN_HEIGHT, SCREEN_WIDTH
-from src.game.systems.magic import Spell
-from src.game.systems.reward import RewardOption
+from src.game.game_manager import GameManager
+from src.game.settings import COLOR_HUD_HP, COLOR_HUD_MP, COLOR_WHITE, SCREEN_WIDTH
+from src.game.systems.spell_data import SPELL_REGISTRY
 from src.game.ui.fonts import get_font
 
-if TYPE_CHECKING:
-    from src.game.scenes.battle import BattleField
-
-GESTURE_KR = {
-    "scissors": "가위",
-    "rock": "바위",
-    "paper": "보",
-}
-
-GESTURE_COLORS = {
-    "scissors": (78, 205, 196),
-    "rock": (255, 177, 66),
-    "paper": (116, 185, 255),
-}
+# 잠긴 마법 테두리 색상
+_COLOR_LOCKED = (80, 80, 90)
 
 
-class Hud:
+class HUD:
+    """게임 HUD 렌더러.
+
+    HP 바, MP 바, 마나 충전 텍스트, 스킬 핫바(쿨타임·잠금·레벨 시각화),
+    웨이브 번호를 메인 화면에 렌더링한다.
+    """
+
     def __init__(self) -> None:
-        self.font = get_font(25)
-        self.small_font = get_font(20)
-        self.tiny_font = get_font(17)
-        self.big_font = get_font(44, bold=True)
-        self.title_font = get_font(30, bold=True)
-
-        # 보상창은 기존보다 2pt 낮춘 전용 폰트 사용
-        self.reward_big_font = get_font(42, bold=True)
-        self.reward_title_font = get_font(28, bold=True)
-        self.reward_small_font = get_font(18)
-        self.reward_desc_font = get_font(17)
-        self.reward_tiny_font = get_font(15)
+        self.font: pygame.font.Font = get_font(28, bold=True)
+        self.font_small: pygame.font.Font = get_font(20, bold=True)
 
     def draw(
         self,
-        surface: pygame.Surface,
-        player: Player,
-        stage: int,
-        active_field_index: int,
-        fields: list["BattleField"],
-        remaining_enemies: int,
-        current_combo: list[str],
-        spells: list[Spell],
-        message: str,
-        reward_options: list[RewardOption] | None = None,
+        screen: pygame.Surface,
+        game_manager: GameManager,
+        is_recharging: bool,
+        selected_spell: str | None = None,
     ) -> None:
-        self._bar(surface, 30, 26, 260, 22, player.hp / player.max_hp, COLOR_HUD_HP, f"Life {int(player.hp)}/{int(player.max_hp)}")
-        self._bar(surface, 30, 58, 260, 22, player.mana / player.max_mana, COLOR_HUD_MP, f"Mana {int(player.mana)}/{int(player.max_mana)}")
+        self._draw_hp_bar(screen, game_manager)
+        self._draw_mp_bar(screen, game_manager)
+        self._draw_recharge_text(screen, is_recharging)
+        self._draw_wave(screen, game_manager)
+        self._draw_skill_hotbar(screen, game_manager, selected_spell)
+        if selected_spell is not None:
+            self._draw_selected_indicator(screen, selected_spell)
 
-        stage_text = self.title_font.render(f"Stage {stage}", True, COLOR_WHITE)
-        surface.blit(stage_text, (SCREEN_WIDTH - stage_text.get_width() - 28, 24))
+    # ── 내부 렌더링 헬퍼 ──────────────────────────────────────────────────
 
-        self._draw_skill_panel(surface, player, current_combo, spells)
-        self._draw_current_combo_center(surface, current_combo)
+    def _draw_hp_bar(self, screen: pygame.Surface, gm: GameManager) -> None:
+        bar_w, bar_h = 300, 25
+        ratio = gm.hp / gm.max_hp
+        pygame.draw.rect(screen, (44, 62, 80), (50, 50, bar_w, bar_h))
+        pygame.draw.rect(screen, COLOR_HUD_HP, (50, 50, int(bar_w * ratio), bar_h))
+        text = self.font.render(f"HP: {int(gm.hp)}/{int(gm.max_hp)}", True, COLOR_WHITE)
+        screen.blit(text, (50, 15))
 
-        if reward_options:
-            self.draw_reward_overlay(surface, reward_options)
+    def _draw_mp_bar(self, screen: pygame.Surface, gm: GameManager) -> None:
+        bar_w, bar_h = 300, 25
+        ratio = gm.mp / gm.max_mp
+        pygame.draw.rect(screen, (44, 62, 80), (50, 120, bar_w, bar_h))
+        pygame.draw.rect(screen, COLOR_HUD_MP, (50, 120, int(bar_w * ratio), bar_h))
+        text = self.font.render(f"MP: {int(gm.mp)}/{int(gm.max_mp)}", True, COLOR_WHITE)
+        screen.blit(text, (50, 85))
 
-    def draw_reward_overlay(self, surface: pygame.Surface, reward_options: list[RewardOption]) -> None:
-        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 170))
-        surface.blit(overlay, (0, 0))
+    def _draw_recharge_text(self, screen: pygame.Surface, is_recharging: bool) -> None:
+        if is_recharging:
+            text = self.font.render("RECHARGING MANA...", True, (241, 196, 15))
+            screen.blit(text, (50, 160))
 
-        title = self.reward_big_font.render("보상을 선택해 주세요", True, (255, 220, 120))
-        surface.blit(title, (SCREEN_WIDTH // 2 - title.get_width() // 2, 70))
+    def _draw_wave(self, screen: pygame.Surface, gm: GameManager) -> None:
+        text = self.font.render(f"WAVE  {gm.current_wave}", True, (241, 196, 15))
+        screen.blit(text, (50, 195))
 
-        for index, option in enumerate(reward_options):
-            rect = self.reward_card_rect(index, len(reward_options))
-            self._draw_reward_card(surface, rect, index, option)
-
-    def reward_card_rect(self, index: int, total: int) -> pygame.Rect:
-        card_w, card_h = 245, 360
-        gap = 34
-        total_w = total * card_w + (total - 1) * gap
-        x = SCREEN_WIDTH // 2 - total_w // 2 + index * (card_w + gap)
-        y = SCREEN_HEIGHT // 2 - card_h // 2 + 35
-        return pygame.Rect(x, y, card_w, card_h)
-
-    def _draw_reward_card(self, surface: pygame.Surface, rect: pygame.Rect, index: int, option: RewardOption) -> None:
-        pygame.draw.rect(surface, (245, 227, 188), rect, border_radius=8)
-        pygame.draw.rect(surface, (168, 128, 72), rect, 3, border_radius=8)
-
-        header = pygame.Rect(rect.x, rect.y, rect.w, 64)
-        pygame.draw.rect(surface, (255, 190, 90), header, border_top_left_radius=8, border_top_right_radius=8)
-        badge_text = "플레이어" if option.category == "player" else "마법"
-        badge_color = (210, 80, 65) if option.category == "player" else (70, 150, 100)
-        badge = pygame.Rect(rect.x + 14, rect.y + 14, 72, 26)
-        pygame.draw.rect(surface, badge_color, badge, border_radius=6)
-        self._center_text(surface, badge_text, self.reward_tiny_font, badge, COLOR_WHITE)
-
-        num = self.reward_small_font.render(f"{index + 1}", True, (80, 52, 30))
-        surface.blit(num, (rect.right - 30, rect.y + 16))
-
-        title_rect = pygame.Rect(rect.x + 16, rect.y + 78, rect.w - 32, 52)
-        self._wrapped_text(surface, option.title, self.reward_title_font, title_rect, (55, 42, 35), line_gap=2)
-
-        pygame.draw.line(surface, (190, 165, 120), (rect.x + 18, rect.y + 144), (rect.right - 18, rect.y + 144), 2)
-
-        desc_rect = pygame.Rect(rect.x + 20, rect.y + 160, rect.w - 40, rect.h - 192)
-        self._wrapped_text(surface, option.description, self.reward_desc_font, desc_rect, (65, 58, 50), line_gap=7)
-
-        footer = pygame.Rect(rect.x + 28, rect.bottom - 48, rect.w - 56, 30)
-        pygame.draw.rect(surface, (238, 238, 232), footer, border_radius=6)
-        self._center_text(surface, "선택", self.reward_small_font, footer, (65, 58, 50))
-
-    def _bar(self, surface: pygame.Surface, x: int, y: int, w: int, h: int, ratio: float, color: tuple[int, int, int], label: str) -> None:
-        ratio = max(0.0, min(1.0, ratio))
-        bg = pygame.Rect(x, y, w, h)
-        fg = pygame.Rect(x, y, int(w * ratio), h)
-        pygame.draw.rect(surface, (55, 57, 72), bg, border_radius=6)
-        pygame.draw.rect(surface, color, fg, border_radius=6)
-        text = self.small_font.render(label, True, COLOR_WHITE)
-        surface.blit(text, (x + 8, y + 1))
-
-    def _draw_skill_panel(self, surface: pygame.Surface, player: Player, current_combo: list[str], spells: list[Spell]) -> None:
-        x = 320
-        y = 26
-        row_w = 275
-        row_h = 34
-        row_gap = 7
-        combo_x = x + row_w + 12
-
-        now = time.monotonic()
-        title = self.tiny_font.render("Skills", True, COLOR_WHITE)
-        combo_title = self.tiny_font.render("Combo", True, COLOR_WHITE)
-        surface.blit(title, (x + 2, y - 20))
-        surface.blit(combo_title, (combo_x + 2, y - 20))
-
-        visible_spells = [spell for spell in spells if spell.is_unlocked()]
-        if not visible_spells:
-            empty = self.tiny_font.render("해금된 스킬 없음", True, COLOR_MUTED)
-            surface.blit(empty, (x, y + 8))
-            return
-
-        for index, spell in enumerate(visible_spells):
-            row_y = y + index * (row_h + row_gap)
-            possible = (not current_combo) or spell.combo[: len(current_combo)] == tuple(current_combo)
-            cooldown_left = spell.cooldown_remaining(player, now)
-            enough_mana = player.mana >= spell.stat.mana_cost
-            ready = cooldown_left <= 0.0 and enough_mana and possible
-
-            if ready:
-                fill = (30, 34, 50)
-                border = (145, 95, 190)
-                text_color = COLOR_WHITE
-            else:
-                fill = (7, 8, 13)
-                border = (45, 34, 55)
-                text_color = (105, 108, 125)
-
-            rect = pygame.Rect(x, row_y, row_w, row_h)
-            pygame.draw.rect(surface, fill, rect, border_radius=7)
-            pygame.draw.rect(surface, border, rect, 2, border_radius=7)
-
-            label_text = f"{spell.name} Lv.{spell.level}  ({int(spell.stat.mana_cost)} MP)"
-            label = self.tiny_font.render(label_text, True, text_color)
-            surface.blit(label, (rect.x + 10, rect.y + 7))
-
-            if cooldown_left > 0.0:
-                status_text = f"{cooldown_left:.1f}s"
-                status_color = (255, 100, 74)
-            elif not enough_mana:
-                status_text = "MP"
-                status_color = (95, 150, 255)
-            elif possible:
-                status_text = "READY"
-                status_color = (70, 225, 150)
-            else:
-                status_text = "-"
-                status_color = (100, 96, 116)
-
-            status = self.tiny_font.render(status_text, True, status_color)
-            surface.blit(status, (rect.right - status.get_width() - 10, rect.y + 7))
-
-            gx = combo_x
-            remaining = spell.combo[len(current_combo):] if possible and current_combo else spell.combo
-            for gesture in remaining:
-                self._gesture_box(surface, gx, row_y + 4, gesture, 36, 26, dim=not ready and cooldown_left > 0.0)
-                gx += 41
-
-    def _gesture_box(self, surface: pygame.Surface, x: int, y: int, gesture: str, w: int = 50, h: int = 34, dim: bool = False) -> None:
-        rect = pygame.Rect(x, y, w, h)
-        fill = GESTURE_COLORS.get(gesture, (36, 41, 58))
-        if dim:
-            fill = tuple(max(0, int(value * 0.35)) for value in fill)
-        pygame.draw.rect(surface, fill, rect, border_radius=7)
-        pygame.draw.rect(surface, COLOR_MUTED, rect, 1, border_radius=7)
-        text = self.tiny_font.render(GESTURE_KR.get(gesture, gesture), True, COLOR_WHITE if not dim else (120, 124, 138))
-        surface.blit(text, (x + rect.w // 2 - text.get_width() // 2, y + rect.h // 2 - text.get_height() // 2))
-
-    def _draw_current_combo_center(self, surface: pygame.Surface, current_combo: list[str]) -> None:
-        if not current_combo:
-            return
-        overlay = pygame.Surface((360, 90), pygame.SRCALPHA)
-        pygame.draw.rect(overlay, (255, 255, 255, 34), overlay.get_rect(), border_radius=18)
-        x = 32
-        for gesture in current_combo:
-            self._gesture_box(overlay, x, 29, gesture)
-            x += 70
-        surface.blit(overlay, (SCREEN_WIDTH // 2 - 180, SCREEN_HEIGHT // 2 - 45))
-
-    def draw_unlock_overlay(self, surface: pygame.Surface, spell: Spell, demo_time: float, demo_field: "BattleField" | None = None) -> None:
-        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 185))
-        surface.blit(overlay, (0, 0))
-
-        title = self.reward_big_font.render("새로운 스킬 해금", True, (255, 220, 120))
-        surface.blit(title, (SCREEN_WIDTH // 2 - title.get_width() // 2, 54))
-
-        box = pygame.Rect(SCREEN_WIDTH // 2 - 330, 120, 660, 405)
-        pygame.draw.rect(surface, (26, 29, 43), box, border_radius=18)
-        pygame.draw.rect(surface, (145, 95, 190), box, 3, border_radius=18)
-
-        name = self.title_font.render(f"{spell.name} Lv.{spell.level}", True, COLOR_WHITE)
-        surface.blit(name, (box.centerx - name.get_width() // 2, box.y + 24))
-
-        player_pos = (box.centerx - 200, box.y + 210)
-        enemy_pos = (box.centerx + 200, box.y + 210)
-        phase = demo_time % 1.45
-
-        pygame.draw.circle(surface, (90, 170, 255), player_pos, 24)
-        pygame.draw.circle(surface, COLOR_WHITE, player_pos, 28, 2)
-        player_label = self.tiny_font.render("Player", True, COLOR_WHITE)
-        surface.blit(player_label, (player_pos[0] - player_label.get_width() // 2, player_pos[1] + 38))
-
-        if demo_field is not None and demo_field.enemies:
-            demo_field.enemies[0].draw(surface, True)
-        else:
-            pygame.draw.rect(surface, (235, 87, 87), pygame.Rect(enemy_pos[0] - 24, enemy_pos[1] - 24, 48, 48), border_radius=8)
-            pygame.draw.rect(surface, (40, 220, 130), pygame.Rect(enemy_pos[0] - 26, enemy_pos[1] - 38, 52, 6), border_radius=3)
-        enemy_label = self.tiny_font.render("Target", True, COLOR_WHITE)
-        surface.blit(enemy_label, (enemy_pos[0] - enemy_label.get_width() // 2, enemy_pos[1] + 38))
-
-        active_demo_objects = False
-        if demo_field is not None:
-            for effect in demo_field.effects:
-                effect.draw(surface)
-                active_demo_objects = True
-            for projectile in demo_field.projectiles:
-                projectile.draw(surface)
-                active_demo_objects = True
-
-        if not active_demo_objects and phase >= 0.9:
-            self._draw_demo_ready_text(surface, box.center)
-
-        combo_label = self.small_font.render(f"조합법: {spell.name}", True, COLOR_WHITE)
-        surface.blit(combo_label, (box.centerx - combo_label.get_width() // 2, box.bottom - 93))
-        total_w = len(spell.combo) * 56 + (len(spell.combo) - 1) * 12
-        gx = box.centerx - total_w // 2
-        gy = box.bottom - 58
-        for gesture in spell.combo:
-            self._gesture_box(surface, gx, gy, gesture, 56, 38)
-            gx += 68
-
-
-    def _draw_lightning_demo(self, surface: pygame.Surface, enemy_pos: tuple[int, int], phase: float, radius: float, box_center: tuple[int, int]) -> None:
-        if phase < 0.9:
-            effect = LightningStrike(
-                x=enemy_pos[0],
-                y=enemy_pos[1],
-                damage=0,
-                radius=radius,
-            )
-            effect.draw(surface)
-        else:
-            self._draw_demo_ready_text(surface, box_center)
-
-    def _draw_explosion_demo(self, surface: pygame.Surface, enemy_pos: tuple[int, int], phase: float, radius: float, box_center: tuple[int, int]) -> None:
-        if phase < 0.9:
-            effect = Explosion(
-                x=enemy_pos[0],
-                y=enemy_pos[1],
-                damage=0,
-                radius=radius,
-            )
-            effect.age = min(effect.duration, effect.duration * (phase / 0.9))
-            effect.draw(surface)
-        else:
-            self._draw_demo_ready_text(surface, box_center)
-
-    def _draw_projectile_demo(self, surface: pygame.Surface, player_pos: tuple[int, int], enemy_pos: tuple[int, int], phase: float, box_center: tuple[int, int]) -> None:
-        if phase < 0.9:
-            t = min(1.0, phase / 0.9)
-            px = player_pos[0] + (enemy_pos[0] - player_pos[0]) * t
-            py = player_pos[1] + (enemy_pos[1] - player_pos[1]) * t
-            dummy_target = Enemy(x=enemy_pos[0], y=enemy_pos[1])
-            projectile = MagicMissile(
-                x=px,
-                y=py,
-                target=dummy_target,
-                damage=0,
-                speed=0,
-            )
-            projectile.draw(surface)
-        else:
-            self._draw_demo_ready_text(surface, box_center)
-
-
-    def _draw_demo_ready_text(self, surface: pygame.Surface, box_center: tuple[int, int]) -> None:
-        ready = self.small_font.render("재시전 준비...", True, COLOR_MUTED)
-        surface.blit(ready, (box_center[0] - ready.get_width() // 2, box_center[1] - ready.get_height() // 2))
-
-
-    def _center_text(self, surface: pygame.Surface, text: str, font: pygame.font.Font, rect: pygame.Rect, color: tuple[int, int, int]) -> None:
-        image = font.render(text, True, color)
-        surface.blit(image, (rect.centerx - image.get_width() // 2, rect.centery - image.get_height() // 2))
-
-    def _wrapped_text(
+    def _draw_skill_hotbar(
         self,
-        surface: pygame.Surface,
-        text: str,
-        font: pygame.font.Font,
-        rect: pygame.Rect,
-        color: tuple[int, int, int],
-        line_gap: int = 4,
+        screen: pygame.Surface,
+        gm: GameManager,
+        selected_spell: str | None = None,
     ) -> None:
-        y = rect.y
-        for paragraph in text.split("\n"):
-            line = ""
-            for ch in paragraph:
-                test = line + ch
-                if font.size(test)[0] <= rect.w:
-                    line = test
-                else:
-                    if line:
-                        image = font.render(line, True, color)
-                        surface.blit(image, (rect.x, y))
-                        y += image.get_height() + line_gap
-                    line = ch
-            if line:
-                image = font.render(line, True, color)
-                surface.blit(image, (rect.x, y))
-                y += image.get_height() + line_gap
-            y += line_gap
-            if y > rect.bottom:
-                break
+        """우상단에 스킬 핫바를 그린다. SPELL_REGISTRY 순서로 렌더링."""
+        start_x = SCREEN_WIDTH - 380
+        start_y = 30
+        box_w, box_h = 330, 50
+
+        for spell in SPELL_REGISTRY.values():
+            cd = gm.spell_cooldowns.get(spell.name, 0.0)
+            is_selected = spell.name == selected_spell
+            border_color = spell.color if spell.unlocked else _COLOR_LOCKED
+
+            # 선택된 마법: 골드 글로우 배경
+            if is_selected:
+                glow = pygame.Surface((box_w + 8, box_h + 8), pygame.SRCALPHA)
+                glow.fill((241, 196, 15, 60))
+                screen.blit(glow, (start_x - 4, start_y - 4))
+
+            # 박스 배경 및 테두리
+            pygame.draw.rect(screen, (20, 20, 30), (start_x, start_y, box_w, box_h), border_radius=6)
+
+            # 선택 시: 골드 두꺼운 테두리, 평상시: 마법 색 테두리
+            if is_selected:
+                pygame.draw.rect(screen, (241, 196, 15), (start_x, start_y, box_w, box_h), width=3, border_radius=6)
+            else:
+                pygame.draw.rect(screen, border_color, (start_x, start_y, box_w, box_h), width=2, border_radius=6)
+
+            if spell.unlocked:
+                # 마법명 + 단축키 + MP 비용
+                label = f"{spell.hotkey}: {spell.display_name}  ({int(spell.mp_cost)} MP)"
+                text_color = (241, 196, 15) if is_selected else COLOR_WHITE
+                text_surf = self.font_small.render(label, True, text_color)
+                screen.blit(text_surf, (start_x + 10, start_y + 8))
+
+                # 레벨 배지 (Lv.2 이상일 때만)
+                if spell.level > 1:
+                    lv_text = self.font_small.render(f"Lv.{spell.level}", True, (241, 196, 15))
+                    screen.blit(lv_text, (start_x + box_w - 55, start_y + 8))
+
+                # 선택 마크 (▶)
+                if is_selected:
+                    mark = self.font_small.render("▶", True, (241, 196, 15))
+                    screen.blit(mark, (start_x - 22, start_y + 14))
+
+                # 쿨타임 오버레이
+                if cd > 0.0:
+                    mask = pygame.Surface((box_w, box_h), pygame.SRCALPHA)
+                    mask.fill((0, 0, 0, 180))
+                    screen.blit(mask, (start_x, start_y))
+                    cd_text = self.font.render(f"{cd:.1f}s", True, (231, 76, 60))
+                    screen.blit(cd_text, (start_x + box_w - 70, start_y + 10))
+                elif gm.mp < spell.mp_cost:
+                    mask = pygame.Surface((box_w, box_h), pygame.SRCALPHA)
+                    mask.fill((0, 0, 0, 128))
+                    screen.blit(mask, (start_x, start_y))
+            else:
+                # 잠금 상태
+                mask = pygame.Surface((box_w, box_h), pygame.SRCALPHA)
+                mask.fill((0, 0, 0, 200))
+                screen.blit(mask, (start_x, start_y))
+                label = f"{spell.hotkey}: {spell.display_name}"
+                text_surf = self.font_small.render(label, True, (120, 120, 130))
+                screen.blit(text_surf, (start_x + 10, start_y + 8))
+                lock_surf = self.font_small.render("LOCKED", True, (180, 60, 60))
+                screen.blit(lock_surf, (start_x + box_w - 80, start_y + 8))
+
+            start_y += box_h + 15
+
+    def _draw_selected_indicator(self, screen: pygame.Surface, selected_spell: str) -> None:
+        """화면 하단 중앙에 선택된 마법 이름과 클릭 안내를 표시한다."""
+        spell = SPELL_REGISTRY.get(selected_spell)
+        color = spell.color if spell else (241, 196, 15)
+        name = spell.display_name if spell else selected_spell
+
+        text = self.font.render(f"[ {name} ]  —  클릭하여 발동", True, color)
+        x = (SCREEN_WIDTH - text.get_width()) // 2
+        screen.blit(text, (x, 1040))

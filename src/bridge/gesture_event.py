@@ -23,3 +23,23 @@ class GestureEvent:
     confidence: float
     aim_x: float
     aim_y: float
+
+
+# Pygame 사용자 정의 이벤트 타입 정의
+import pygame
+
+GESTURE_EVENT = pygame.USEREVENT + 1
+
+
+def post_gesture_event(gesture_event: GestureEvent) -> None:
+    """인식된 제스처 이벤트를 Pygame의 이벤트 큐에 게시한다.
+
+    이 함수는 백그라운드 스레드에서 안전하게 호출하여 메인 스레드의 Pygame 루프로
+    이벤트를 전달하는 데 사용된다.
+
+    Args:
+        gesture_event: 게시할 GestureEvent 객체.
+    """
+    if pygame.get_init():
+        event = pygame.event.Event(GESTURE_EVENT, {"gesture_event": gesture_event})
+        pygame.event.post(event)

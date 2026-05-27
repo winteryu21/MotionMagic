@@ -27,6 +27,7 @@ from src.game.settings import (
     SCREEN_WIDTH,
 )
 from src.game.systems.magic import MagicSystem
+from src.game.systems.combat import CombatSystem
 from src.game.systems.spawner import WaveSpawner
 from src.game.ui.crosshair import Crosshair
 from src.game.systems.reward import RewardOption, RewardSystem
@@ -46,10 +47,18 @@ class BattleField:
     def remaining_enemies(self) -> int:
         return sum(1 for enemy in self.enemies if enemy.alive)
 
+    @property
+    def base_line_x(self) -> int:
+        return BASE_LINE_X if self.index == 0 else SCREEN_WIDTH - BASE_LINE_X
+
+    @property
+    def player_pos(self) -> tuple[int, int]:
+        return (PLAYER_X, PLAYER_Y) if self.index == 0 else (SCREEN_WIDTH - PLAYER_X, PLAYER_Y)
+
     def update(self, dt: float, player: Player) -> int:
         defeated_count = 0
         for enemy in list(self.enemies):
-            enemy.update(dt, BASE_LINE_X)
+            enemy.update(dt, self.base_line_x)
             if enemy.reached_base:
                 player.take_damage(enemy.siege_damage)
                 self.enemies.remove(enemy)
@@ -59,6 +68,10 @@ class BattleField:
 
         for projectile in list(self.projectiles):
             projectile.update(dt)
+
+        CombatSystem.update_projectile_collisions(self)
+
+        for projectile in list(self.projectiles):
             if not projectile.alive:
                 self.projectiles.remove(projectile)
 
@@ -80,10 +93,12 @@ class BattleField:
         else:
             pygame.draw.rect(surface, COLOR_FIELD_BG if active else COLOR_INACTIVE_FIELD_BG, field_rect)
 
-        # 좌측 기지 라인과 플레이어
-        pygame.draw.line(surface, COLOR_BASE, (BASE_LINE_X, 70), (BASE_LINE_X, SCREEN_HEIGHT - 70), 5)
-        pygame.draw.circle(surface, (90, 170, 255), (PLAYER_X, PLAYER_Y), 22)
-        pygame.draw.circle(surface, COLOR_WHITE, (PLAYER_X, PLAYER_Y), 26, 2)
+        # 전장 방향에 맞춘 기지 라인과 플레이어
+        base_x = self.base_line_x
+        player_x, player_y = self.player_pos
+        pygame.draw.line(surface, COLOR_BASE, (base_x, 70), (base_x, SCREEN_HEIGHT - 70), 5)
+        pygame.draw.circle(surface, (90, 170, 255), (player_x, player_y), 22)
+        pygame.draw.circle(surface, COLOR_WHITE, (player_x, player_y), 26, 2)
 
         for enemy in self.enemies:
             enemy.draw(surface, active)
@@ -166,6 +181,7 @@ class BattleScene:
                 self.player,
                 self.active_field,
                 self.aim_pos,
+                origin_pos=self.active_field.player_pos,
             )
             self.message_timer = 1.4
             self.current_combo.clear()

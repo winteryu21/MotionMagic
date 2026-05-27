@@ -70,8 +70,11 @@ class RewardSystem:
             f"피해량 {int(stat.damage)} / 마나 {int(stat.mana_cost)}",
             f"쿨타임 {stat.cooldown:.2f}s",
         ]
-        if spell.name == "매직 미사일":
-            lines.append(f"타겟 {stat.target_count}개 / 속도 {int(stat.projectile_speed)}")
+        if getattr(spell, "key", "") == "magic_missile":
+            lines.append(f"관통 {stat.pierce_count}회 / 속도 {int(stat.projectile_speed)}")
+        elif getattr(spell, "key", "") == "lightning":
+            lines.append(f"체인 {stat.chain_count}회 / 사거리 {int(stat.radius)}")
+            lines.append("상태이상: 스턴")
         else:
             lines.append(f"범위 {int(stat.radius)}")
             if stat.status_effect == "dot":

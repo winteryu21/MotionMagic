@@ -75,11 +75,19 @@ class Enemy:
     enemy_type: str = "normal"
     defense_rate: float = 0.0
     field_index: int = 0
+    advance_direction: int = -1
     status_effects: list[StatusEffect] = field(default_factory=list)
     reached_base: bool = False
 
     @classmethod
-    def from_type(cls, enemy_type: str, x: float, y: float, field_index: int = 0) -> "Enemy":
+    def from_type(
+        cls,
+        enemy_type: str,
+        x: float,
+        y: float,
+        field_index: int = 0,
+        advance_direction: int = -1,
+    ) -> "Enemy":
         stat = ENEMY_STATS[enemy_type]
         return cls(
             x=x,
@@ -92,6 +100,7 @@ class Enemy:
             enemy_type=stat.key,
             defense_rate=stat.defense_rate,
             field_index=field_index,
+            advance_direction=advance_direction,
         )
 
     @property
@@ -132,9 +141,11 @@ class Enemy:
                 self.status_effects.remove(effect)
 
         if not stunned:
-            self.x -= self.speed * dt
+            self.x += self.speed * self.advance_direction * dt
 
-        if self.x <= base_line_x:
+        if self.advance_direction < 0 and self.x <= base_line_x:
+            self.reached_base = True
+        elif self.advance_direction > 0 and self.x >= base_line_x:
             self.reached_base = True
 
     def draw(self, surface: pygame.Surface, active: bool = True) -> None:

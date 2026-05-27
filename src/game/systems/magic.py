@@ -8,7 +8,7 @@ import time
 
 from src.game.entities.enemy import StatusEffect
 from src.game.entities.player import Player
-from src.game.entities.projectile import Explosion, Fireball, LightningStrike, MagicMissile
+from src.game.entities.projectile import Explosion, Fireball, LightningStrike, MagicMissile, PiercingBullet
 from src.game.settings import GESTURE_PAPER, GESTURE_ROCK, GESTURE_SCISSORS, PLAYER_X, PLAYER_Y
 
 
@@ -60,36 +60,81 @@ class Spell:
 class MagicSystem:
     def __init__(self) -> None:
         self.spells: dict[str, Spell] = {
+            # ── 1티어 ──
             "magic_missile": Spell(
                 key="magic_missile",
-                name="마탄",
-                combo=(GESTURE_SCISSORS, GESTURE_ROCK),
+                name="매직 미사일",
+                combo=(GESTURE_SCISSORS,),
                 level_table={
-                    1: MagicLevelStat(cooldown=0.55, damage=20, mana_cost=8, projectile_speed=560, pierce_count=2),
-                    2: MagicLevelStat(cooldown=0.48, damage=26, mana_cost=9, projectile_speed=620, pierce_count=3),
-                    3: MagicLevelStat(cooldown=0.40, damage=34, mana_cost=10, projectile_speed=700, pierce_count=4),
+                    1: MagicLevelStat(cooldown=0.45, damage=20, mana_cost=8, projectile_speed=480, pierce_count=1),
+                    2: MagicLevelStat(cooldown=0.38, damage=26, mana_cost=9, projectile_speed=540, pierce_count=2),
+                    3: MagicLevelStat(cooldown=0.32, damage=34, mana_cost=10, projectile_speed=600, pierce_count=3),
                 },
             ),
             "fireball": Spell(
                 key="fireball",
                 name="화염구",
-                combo=(GESTURE_ROCK, GESTURE_PAPER),
+                combo=(GESTURE_ROCK,),
                 level_table={
-                    1: MagicLevelStat(cooldown=1.45, damage=34, mana_cost=18, projectile_speed=360, radius=90, status_effect="dot"),
-                    2: MagicLevelStat(cooldown=1.25, damage=46, mana_cost=21, projectile_speed=390, radius=115, status_effect="dot"),
-                    3: MagicLevelStat(cooldown=1.05, damage=60, mana_cost=25, projectile_speed=420, radius=145, status_effect="dot"),
+                    1: MagicLevelStat(cooldown=3.0, damage=40, mana_cost=30, projectile_speed=350, radius=120),
+                    2: MagicLevelStat(cooldown=2.5, damage=48, mana_cost=35, projectile_speed=400, radius=140),
+                    3: MagicLevelStat(cooldown=2.0, damage=58, mana_cost=40, projectile_speed=450, radius=160),
                 },
             ),
-            # key는 기존 unlock/reward 흐름 호환을 위해 lightning 유지, 표시명과 동작은 체인 라이트닝으로 변경
+            "chain_lightning": Spell(
+                key="chain_lightning",
+                name="체인 라이트닝",
+                combo=(GESTURE_PAPER,),
+                level_table={
+                    1: MagicLevelStat(cooldown=5.0, damage=25, mana_cost=45, radius=350, chain_count=4),
+                    2: MagicLevelStat(cooldown=4.5, damage=30, mana_cost=50, radius=380, chain_count=5),
+                    3: MagicLevelStat(cooldown=4.0, damage=36, mana_cost=55, radius=420, chain_count=6),
+                },
+            ),
+            # ── 2티어 ──
             "lightning": Spell(
                 key="lightning",
-                name="체인 라이트닝",
+                name="낙뢰",
+                combo=(GESTURE_SCISSORS, GESTURE_ROCK),
+                unlocked=False,
+                level_table={
+                    1: MagicLevelStat(cooldown=1.1, damage=24, mana_cost=16, radius=60, status_effect="stun"),
+                    2: MagicLevelStat(cooldown=0.95, damage=34, mana_cost=19, radius=78, status_effect="stun"),
+                    3: MagicLevelStat(cooldown=0.8, damage=46, mana_cost=23, radius=95, status_effect="stun"),
+                },
+            ),
+            "explosion": Spell(
+                key="explosion",
+                name="폭발",
+                combo=(GESTURE_ROCK, GESTURE_PAPER),
+                unlocked=False,
+                level_table={
+                    1: MagicLevelStat(cooldown=1.4, damage=30, mana_cost=18, radius=85, status_effect="dot"),
+                    2: MagicLevelStat(cooldown=1.2, damage=42, mana_cost=21, radius=105, status_effect="dot"),
+                    3: MagicLevelStat(cooldown=1.0, damage=55, mana_cost=25, radius=130, status_effect="dot"),
+                },
+            ),
+            "piercing_bullet": Spell(
+                key="piercing_bullet",
+                name="마탄",
                 combo=(GESTURE_PAPER, GESTURE_SCISSORS),
                 unlocked=False,
                 level_table={
-                    1: MagicLevelStat(cooldown=1.15, damage=24, mana_cost=16, radius=350, chain_count=4, status_effect="stun"),
-                    2: MagicLevelStat(cooldown=1.00, damage=32, mana_cost=19, radius=380, chain_count=5, status_effect="stun"),
-                    3: MagicLevelStat(cooldown=0.85, damage=42, mana_cost=23, radius=420, chain_count=6, status_effect="stun"),
+                    1: MagicLevelStat(cooldown=1.0, damage=20, mana_cost=15, projectile_speed=600, pierce_count=3),
+                    2: MagicLevelStat(cooldown=0.8, damage=24, mana_cost=18, projectile_speed=660, pierce_count=4),
+                    3: MagicLevelStat(cooldown=0.6, damage=28, mana_cost=21, projectile_speed=720, pierce_count=5),
+                },
+            ),
+            # ── 3티어 ──
+            "meteor": Spell(
+                key="meteor",
+                name="메테오",
+                combo=(GESTURE_ROCK, GESTURE_PAPER, GESTURE_ROCK),
+                unlocked=False,
+                level_table={
+                    1: MagicLevelStat(cooldown=8.0, damage=120, mana_cost=70, radius=200, status_effect="dot"),
+                    2: MagicLevelStat(cooldown=7.0, damage=150, mana_cost=80, radius=230, status_effect="dot"),
+                    3: MagicLevelStat(cooldown=6.0, damage=180, mana_cost=90, radius=260, status_effect="dot"),
                 },
             ),
         }
@@ -109,12 +154,14 @@ class MagicSystem:
         return spell
 
     def spell_for_combo(self, combo: list[str]) -> Spell | None:
-        if len(combo) < 2:
+        if not combo:
             return None
-        pair = tuple(combo[-2:])
-        for spell in self.spells.values():
-            if spell.is_unlocked() and spell.combo == pair:
-                return spell
+        # 가장 긴 접미사부터 매칭 시도
+        for i in range(len(combo)):
+            suffix = tuple(combo[i:])
+            for spell in self.spells.values():
+                if spell.is_unlocked() and spell.combo == suffix:
+                    return spell
         return None
 
     def cast_by_combo(
@@ -157,14 +204,24 @@ class MagicSystem:
         field_index = getattr(field, "index", 0)
 
         if spell.key == "magic_missile":
+            enemies = getattr(field, "enemies", [])
+            target_enemy = None
+            if enemies:
+                target_enemy = min(
+                    [e for e in enemies if e.alive],
+                    key=lambda e: math.hypot(e.x - aim_pos[0], e.y - aim_pos[1]),
+                    default=None
+                )
+            
             field.projectiles.append(
                 MagicMissile.toward(
                     origin=origin,
-                    target=aim_pos,
+                    target_pos=aim_pos,
                     damage=stat.damage,
                     speed=stat.projectile_speed,
                     field_index=field_index,
                     pierce_limit=stat.pierce_count,
+                    target_enemy=target_enemy,
                 )
             )
             return f"{spell.name} Lv.{spell.level}"
@@ -182,7 +239,7 @@ class MagicSystem:
             )
             return f"{spell.name} Lv.{spell.level}"
 
-        if spell.key == "lightning":
+        if spell.key == "chain_lightning":
             hit_path = self._cast_chain_lightning(
                 start_pos=(int(cast_x), int(cast_y)),
                 field=field,
@@ -191,6 +248,34 @@ class MagicSystem:
                 damage=stat.damage,
             )
             field.effects.append(LightningStrike(hit_path, damage=stat.damage))
+            return f"{spell.name} Lv.{spell.level}"
+
+        if spell.key == "lightning":
+            field.effects.append(LightningStrike(aim_pos[0], aim_pos[1], stat.damage))
+            # 낙뢰는 좁은 범위 폭발 피해와 함께 스턴(기절) 부여
+            field.effects.append(Explosion(aim_pos[0], aim_pos[1], stat.damage * 0.5, stat.radius, duration=0.2, status_effect="stun"))
+            return f"{spell.name} Lv.{spell.level}"
+
+        if spell.key == "explosion":
+            field.effects.append(Explosion(aim_pos[0], aim_pos[1], stat.damage, stat.radius))
+            return f"{spell.name} Lv.{spell.level}"
+
+        if spell.key == "piercing_bullet":
+            field.projectiles.append(
+                PiercingBullet.toward(
+                    origin=origin,
+                    target=aim_pos,
+                    damage=stat.damage,
+                    speed=stat.projectile_speed,
+                    field_index=field_index,
+                    pierce_limit=stat.pierce_count,
+                )
+            )
+            return f"{spell.name} Lv.{spell.level}"
+
+        if spell.key == "meteor":
+            # 메테오는 거대한 폭발을 긴 시간 동안 발생시킴
+            field.effects.append(Explosion(aim_pos[0], aim_pos[1], stat.damage, stat.radius, duration=0.8))
             return f"{spell.name} Lv.{spell.level}"
 
         return "미구현 마법"
@@ -221,7 +306,6 @@ class MagicSystem:
             if closest is None:
                 break
             closest.take_damage(damage)
-            closest.apply_status(StatusEffect("stun", duration=0.65))
             hit.append(closest)
             current_pos = (closest.x, closest.y)
             path.append((int(closest.x), int(closest.y)))

@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 
 from src.game.entities.enemy import Enemy
-from src.game.entities.projectile import Explosion, Fireball, MagicMissile, Projectile
+from src.game.entities.projectile import Explosion, Fireball, MagicMissile, PiercingBullet, Projectile
 
 
 class CombatSystem:
@@ -40,7 +40,7 @@ class CombatSystem:
                     projectile.alive = False
                     break
 
-                if isinstance(projectile, MagicMissile):
+                if isinstance(projectile, (MagicMissile, PiercingBullet)):
                     if projectile.can_hit(enemy):
                         enemy.take_damage(projectile.damage)
                         projectile.register_hit(enemy)

@@ -311,27 +311,31 @@ class BattleScene:
 
 
     def _draw_inactive_field_minimap(self, surface: pygame.Surface) -> None:
-        mini_w, mini_h = 270, 124
+        mini_w, mini_h = 320, 180  # 16:9 비율 유지 (1920x1080 / 6)
         x, y = SCREEN_WIDTH - mini_w - 20, SCREEN_HEIGHT - mini_h - 20
         inactive_index = 1 - self.active_field_index
-        active = self.fields[self.active_field_index]
         inactive = self.fields[inactive_index]
+
+        # 반대편 전장을 임시 서페이스에 그대로 렌더링
+        temp_surface = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+        inactive.draw(temp_surface, active=False)
+
+        # 렌더링된 전장을 미니맵 크기로 축소
+        minimap_surface = pygame.transform.smoothscale(temp_surface, (mini_w, mini_h))
+        
+        # 메인 화면에 축소된 미니맵 그리기
         rect = pygame.Rect(x, y, mini_w, mini_h)
-        pygame.draw.rect(surface, (20, 22, 32), rect, border_radius=12)
-        pygame.draw.rect(surface, COLOR_MUTED, rect, 2, border_radius=12)
+        surface.blit(minimap_surface, (x, y))
+        
+        # 테두리
+        pygame.draw.rect(surface, (100, 100, 120), rect, 2, border_radius=4)
 
-        font = get_font(18)
-        title_font = get_font(20, bold=True)
-        total = self.spawner.current_plan.total_count
-        defeated = self.spawner.defeated_count
-
-        lines = [
-            (f"Wave Enemy  {defeated}/{total}", title_font),
-            (f"현재 전장 남은 적  {active.remaining_enemies}", font),
-            (f"반대 전장 남은 적  {inactive.remaining_enemies}", font),
-        ]
-        line_y = y + 14
-        for label_text, line_font in lines:
-            label = line_font.render(label_text, True, COLOR_WHITE)
-            surface.blit(label, (x + 14, line_y))
-            line_y += 32
+        # 반대편 전장 텍스트 표시
+        title_font = get_font(18, bold=True)
+        font = get_font(16)
+        
+        title = title_font.render(f"Field {inactive_index + 1}", True, (255, 255, 255))
+        surface.blit(title, (x + 10, y + 8))
+        
+        enemies_count = font.render(f"남은 적: {inactive.remaining_enemies}", True, (255, 100, 100))
+        surface.blit(enemies_count, (x + 10, y + 30))

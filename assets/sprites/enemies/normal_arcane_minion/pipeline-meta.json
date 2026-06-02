@@ -1,0 +1,155 @@
+{
+  "target": "creature",
+  "mode": "walk",
+  "prompt": "normal_arcane_minion_2x2_left_walk",
+  "role": "",
+  "input": "C:\\Users\\Cosmosteller\\.codex\\generated_images\\019e67fa-a981-7742-b6f8-116d01125d0b\\ig_044d308600a6a11f016a1686b4f40881918a22b2e17a528e7b.png",
+  "threshold": 100,
+  "edge_threshold": 150,
+  "duration": 180,
+  "rows": 2,
+  "cols": 2,
+  "cell_size": 256,
+  "fit_scale": 0.88,
+  "trim_border": 4,
+  "edge_clean_depth": 3,
+  "align": "feet",
+  "shared_scale": true,
+  "component_mode": "all",
+  "component_padding": 0,
+  "min_component_area": 1,
+  "edge_touch_margin": 4,
+  "frame_labels": [
+    "walk-1",
+    "walk-2",
+    "walk-3",
+    "walk-4"
+  ],
+  "frames": [
+    {
+      "grid": [
+        0,
+        0
+      ],
+      "source_box": [
+        0,
+        0,
+        627,
+        627
+      ],
+      "component_mode": "all",
+      "component_count": 1,
+      "selected_component_area": null,
+      "selected_component_bbox": null,
+      "crop_bbox": [
+        150,
+        98,
+        470,
+        553
+      ],
+      "edge_touch": false,
+      "output_size": [
+        157,
+        223
+      ],
+      "paste_position": [
+        49,
+        18
+      ]
+    },
+    {
+      "grid": [
+        0,
+        1
+      ],
+      "source_box": [
+        627,
+        0,
+        1254,
+        627
+      ],
+      "component_mode": "all",
+      "component_count": 1,
+      "selected_component_area": null,
+      "selected_component_bbox": null,
+      "crop_bbox": [
+        109,
+        98,
+        464,
+        552
+      ],
+      "edge_touch": false,
+      "output_size": [
+        174,
+        223
+      ],
+      "paste_position": [
+        41,
+        18
+      ]
+    },
+    {
+      "grid": [
+        1,
+        0
+      ],
+      "source_box": [
+        0,
+        627,
+        627,
+        1254
+      ],
+      "component_mode": "all",
+      "component_count": 1,
+      "selected_component_area": null,
+      "selected_component_bbox": null,
+      "crop_bbox": [
+        153,
+        75,
+        474,
+        533
+      ],
+      "edge_touch": false,
+      "output_size": [
+        157,
+        225
+      ],
+      "paste_position": [
+        49,
+        16
+      ]
+    },
+    {
+      "grid": [
+        1,
+        1
+      ],
+      "source_box": [
+        627,
+        627,
+        1254,
+        1254
+      ],
+      "component_mode": "all",
+      "component_count": 1,
+      "selected_component_area": null,
+      "selected_component_bbox": null,
+      "crop_bbox": [
+        138,
+        75,
+        464,
+        533
+      ],
+      "edge_touch": false,
+      "output_size": [
+        160,
+        225
+      ],
+      "paste_position": [
+        48,
+        16
+      ]
+    }
+  ],
+  "edge_touch_frames": []
+}

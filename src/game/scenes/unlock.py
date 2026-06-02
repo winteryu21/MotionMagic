@@ -25,7 +25,12 @@ class UnlockScene:
     def __init__(self) -> None:
         # 이 배열에 spell key를 추가하면 순서대로 해금 씬이 작동함.
         # 예: ["lightning", "ice_spear", "meteor"]
-        self.unlock_order: list[str] = ["lightning"]
+        self.unlock_order: list[str] = [
+            "lightning",
+            "explosion",
+            "piercing_bullet",
+            "meteor",
+        ]
         self.pending = False
         self.spell: Spell | None = None
         self.next_stage = 1

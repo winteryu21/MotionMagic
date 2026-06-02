@@ -15,12 +15,14 @@ class CombatSystem:
     def update_projectile_collisions(field) -> None:
         """field.projectiles와 field.enemies 사이 충돌을 검사한다.
 
-        - MagicMissile: 관통 마탄. 이미 맞은 적은 다시 맞지 않음.
+        - MagicMissile: 자체 update에서 목표 도착과 피해를 처리함.
         - Fireball: 첫 충돌 시 Explosion effect 생성 후 소멸.
         - Projectile: 첫 충돌 적에게 피해 후 소멸.
         """
         for projectile in list(field.projectiles):
             if not projectile.alive:
+                continue
+            if isinstance(projectile, MagicMissile):
                 continue
             for enemy in list(field.enemies):
                 if not enemy.alive:
@@ -40,7 +42,7 @@ class CombatSystem:
                     projectile.alive = False
                     break
 
-                if isinstance(projectile, (MagicMissile, PiercingBullet)):
+                if isinstance(projectile, PiercingBullet):
                     if projectile.can_hit(enemy):
                         enemy.take_damage(projectile.damage)
                         projectile.register_hit(enemy)

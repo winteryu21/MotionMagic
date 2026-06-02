@@ -17,6 +17,7 @@ from src.game.settings import (
     COLOR_INACTIVE_FIELD_BG,
     COLOR_MUTED,
     COLOR_WHITE,
+    GESTURE_COMBO_SIZE,
     GESTURE_PAPER,
     GESTURE_ROCK,
     GESTURE_SCISSORS,
@@ -188,7 +189,7 @@ class BattleScene:
 
     def _push_gesture(self, gesture: str) -> None:
         self.current_combo.append(gesture)
-        if len(self.current_combo) > 2:
+        if len(self.current_combo) > GESTURE_COMBO_SIZE:
             self.current_combo.pop(0)
         self.message = "입력: " + " + ".join({"scissors": "가위", "rock": "바위", "paper": "보"}.get(g, g) for g in self.current_combo)
         self.message_timer = 1.2

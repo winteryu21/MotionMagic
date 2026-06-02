@@ -9,7 +9,7 @@ import time
 from src.game.entities.enemy import StatusEffect
 from src.game.entities.player import Player
 from src.game.entities.projectile import Explosion, Fireball, LightningStrike, MagicMissile, PiercingBullet
-from src.game.settings import GESTURE_PAPER, GESTURE_ROCK, GESTURE_SCISSORS, PLAYER_X, PLAYER_Y
+from src.game.settings import COLOR_LIGHTNING, GESTURE_PAPER, GESTURE_ROCK, GESTURE_SCISSORS, PLAYER_X, PLAYER_Y
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,10 +65,10 @@ class MagicSystem:
                 key="magic_missile",
                 name="매직 미사일",
                 combo=(GESTURE_SCISSORS,),
-                level_table={
-                    1: MagicLevelStat(cooldown=0.45, damage=20, mana_cost=8, projectile_speed=480, pierce_count=1),
-                    2: MagicLevelStat(cooldown=0.38, damage=26, mana_cost=9, projectile_speed=540, pierce_count=2),
-                    3: MagicLevelStat(cooldown=0.32, damage=34, mana_cost=10, projectile_speed=600, pierce_count=3),
+                level_table={#20 26 34
+                    1: MagicLevelStat(cooldown=0.45, damage=1000, mana_cost=8, projectile_speed=480, pierce_count=1),
+                    2: MagicLevelStat(cooldown=0.38, damage=1000, mana_cost=9, projectile_speed=540, pierce_count=2),
+                    3: MagicLevelStat(cooldown=0.32, damage=1000, mana_cost=10, projectile_speed=600, pierce_count=3),
                 },
             ),
             "fireball": Spell(
@@ -213,17 +213,16 @@ class MagicSystem:
                     default=None
                 )
             
-            field.projectiles.append(
-                MagicMissile.toward(
-                    origin=origin,
-                    target_pos=aim_pos,
-                    damage=stat.damage,
-                    speed=stat.projectile_speed,
-                    field_index=field_index,
-                    pierce_limit=stat.pierce_count,
-                    target_enemy=target_enemy,
+            if target_enemy is not None:
+                field.projectiles.append(
+                    MagicMissile(
+                        x=origin[0],
+                        y=origin[1],
+                        target=target_enemy,
+                        damage=stat.damage,
+                        speed=stat.projectile_speed,
+                    )
                 )
-            )
             return f"{spell.name} Lv.{spell.level}"
 
         if spell.key == "fireball":
@@ -253,7 +252,17 @@ class MagicSystem:
         if spell.key == "lightning":
             field.effects.append(LightningStrike(aim_pos[0], aim_pos[1], stat.damage))
             # 낙뢰는 좁은 범위 폭발 피해와 함께 스턴(기절) 부여
-            field.effects.append(Explosion(aim_pos[0], aim_pos[1], stat.damage * 0.5, stat.radius, duration=0.2, status_effect="stun"))
+            field.effects.append(
+                Explosion(
+                    aim_pos[0],
+                    aim_pos[1],
+                    stat.damage * 0.5,
+                    stat.radius,
+                    duration=0.2,
+                    status_effect="stun",
+                    color=COLOR_LIGHTNING,
+                )
+            )
             return f"{spell.name} Lv.{spell.level}"
 
         if spell.key == "explosion":

@@ -1,12 +1,11 @@
-"""05 — 현재 제스처 모드 파이프라인 라이브 데모.
+"""06 — 현재 구조의 오른손 조준/핀치 발사 테스트.
 
-현재 구조에서는 학습된 CNN 단일 분류기 대신 왼손 스택, 오른손 조준,
-오른손 핀치 발사를 분리해서 본다. 이 스크립트는 07 진단 화면을
-기본 라이브 데모 진입점으로 실행한다.
+기존 trigger + 손목 튕김 테스트는 현재 입력 구조와 맞지 않는다.
+이 스크립트는 07 제스처 모드 진단 화면을 오른손 집중 모드로 실행한다.
 
 사용법:
-    python scripts/05_live_demo.py
-    python scripts/05_live_demo.py --camera 1
+    python scripts/06_trigger_shoot_test.py
+    python scripts/06_trigger_shoot_test.py --camera 1 --ema-alpha 0.25
 """
 
 from __future__ import annotations
@@ -32,7 +31,9 @@ def _load_mode_test_module() -> ModuleType:
 
 def main() -> None:
     """CLI 엔트리포인트."""
-    parser = argparse.ArgumentParser(description="MotionMagic 제스처 모드 라이브 데모")
+    parser = argparse.ArgumentParser(
+        description="MotionMagic 오른손 조준/핀치 발사 테스트"
+    )
     parser.add_argument(
         "--camera",
         type=int,
@@ -81,23 +82,12 @@ def main() -> None:
         default="index",
         help="조준점 기준: 검지 끝(index) 또는 엄지/검지 중심(pinch)",
     )
-    parser.add_argument(
-        "--model",
-        type=str,
-        default=None,
-        help="호환용 옵션. 현재 모드 파이프라인에서는 사용하지 않음.",
-    )
     parser.set_defaults(swap_handedness=True)
     parser.add_argument(
         "--no-swap-handedness",
         action="store_false",
         dest="swap_handedness",
         help="MediaPipe handedness 라벨을 그대로 사용",
-    )
-    parser.add_argument(
-        "--right-only",
-        action="store_true",
-        help="오른손 조준/핀치 발사만 집중해서 표시",
     )
     parser.add_argument(
         "--pinch-open",
@@ -125,9 +115,6 @@ def main() -> None:
     )
 
     args = parser.parse_args()
-    if args.model is not None:
-        print("현재 05 라이브 데모는 학습 모델 파일을 사용하지 않습니다.")
-
     module = _load_mode_test_module()
     module.run_test(
         camera_id=args.camera,
@@ -139,7 +126,7 @@ def main() -> None:
         aim_center_y=args.aim_center_y,
         aim_anchor=args.aim_anchor,
         swap_handedness=args.swap_handedness,
-        right_only=args.right_only,
+        right_only=True,
         pinch_open_threshold=args.pinch_open,
         pinch_closed_threshold=args.pinch_closed,
         pinch_close_velocity=args.pinch_velocity,

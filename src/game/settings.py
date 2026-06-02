@@ -15,7 +15,8 @@ TILE_SIZE = 64
 NUM_FIELDS = 2  # 2개 전장 전환
 
 # ── 제스처 ──
-GESTURE_LABELS: list[str] = ["fist", "palm", "point", "scissors"]
+GESTURE_LABELS: list[str] = ["rock", "paper", "scissors", "trigger"]
+TWO_HAND_GESTURE_LABELS: list[str] = ["clasp", "sonaldo"]
 GESTURE_COMBO_SIZE = 2  # 2개 제스처 조합으로 마법 발동
 GESTURE_CONFIDENCE_THRESHOLD = 0.85
 
@@ -34,7 +35,7 @@ AUTO_ATTACK_COOLDOWN_MS = 500
 # ── 에임 ──
 AIM_SENSITIVITY = 2.5
 AIM_EMA_ALPHA = 0.3  # 지수가중이동평균 스무딩 계수
-AIM_BUFFER_SIZE = 5   # 반동 발사용 좌표 버퍼
+AIM_BUFFER_SIZE = 5  # 반동 발사용 좌표 버퍼
 
 # ── 색상 ──
 COLOR_BG = (15, 15, 25)

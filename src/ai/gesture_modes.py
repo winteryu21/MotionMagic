@@ -37,9 +37,8 @@ DEFAULT_FIRE_COOLDOWN_SECONDS = 0.30
 DEFAULT_AIM_HISTORY_SECONDS = 0.45
 DEFAULT_PRE_FIRE_SECONDS = 0.12
 DEFAULT_SPECIAL_COOLDOWN_SECONDS = 0.80
-DEFAULT_CLASP_DISTANCE_THRESHOLD = 0.95
-DEFAULT_CLASP_CENTER_DISTANCE_THRESHOLD = 1.35
-DEFAULT_SONALDO_DISTANCE_THRESHOLD = 0.95
+DEFAULT_SPECIAL_TOUCH_DISTANCE_THRESHOLD = 0.75
+DEFAULT_SPECIAL_FAR_PAIR_DISTANCE_THRESHOLD = 0.85
 DEFAULT_SONALDO_MIN_PINCH_DISTANCE = 0.55
 
 
@@ -247,10 +246,10 @@ def classify_special_gesture(
     left_states = compute_finger_states(left_landmarks)
     right_states = compute_finger_states(right_landmarks)
 
-    if _is_sonaldo(left_landmarks, right_landmarks, left_states, right_states):
-        return "sonaldo"
     if _is_clasp(left_landmarks, right_landmarks, left_states, right_states):
         return "clasp"
+    if _is_sonaldo(left_landmarks, right_landmarks, left_states, right_states):
+        return "sonaldo"
     return None
 
 
@@ -284,40 +283,73 @@ def _hand_scale(landmarks: np.ndarray) -> float:
     return max(scale, 1e-6)
 
 
-def _pair_distance(
+def _landmark_distance(
     left_landmarks: np.ndarray,
+    left_landmark_id: int,
     right_landmarks: np.ndarray,
-    landmark_ids: tuple[int, ...],
+    right_landmark_id: int,
 ) -> float:
-    distances = [
-        float(np.linalg.norm(left_landmarks[index] - right_landmarks[index]))
-        for index in landmark_ids
-    ]
-    return sum(distances) / max(float(len(distances)), 1.0)
-
-
-def _normalized_pair_distance(
-    left_landmarks: np.ndarray,
-    right_landmarks: np.ndarray,
-    landmark_ids: tuple[int, ...],
-) -> float:
-    scale = (_hand_scale(left_landmarks) + _hand_scale(right_landmarks)) * 0.5
-    return _pair_distance(left_landmarks, right_landmarks, landmark_ids) / scale
-
-
-def _hand_center(landmarks: np.ndarray) -> np.ndarray:
-    return landmarks[[WRIST, MIDDLE_MCP]].mean(axis=0)
-
-
-def _hands_center_distance(
-    left_landmarks: np.ndarray,
-    right_landmarks: np.ndarray,
-) -> float:
-    scale = (_hand_scale(left_landmarks) + _hand_scale(right_landmarks)) * 0.5
     return float(
-        np.linalg.norm(_hand_center(left_landmarks) - _hand_center(right_landmarks))
+        np.linalg.norm(
+            left_landmarks[left_landmark_id] - right_landmarks[right_landmark_id]
+        )
+    )
+
+
+def _normalized_landmark_distance(
+    left_landmarks: np.ndarray,
+    left_landmark_id: int,
+    right_landmarks: np.ndarray,
+    right_landmark_id: int,
+) -> float:
+    scale = (_hand_scale(left_landmarks) + _hand_scale(right_landmarks)) * 0.5
+    return (
+        _landmark_distance(
+            left_landmarks,
+            left_landmark_id,
+            right_landmarks,
+            right_landmark_id,
+        )
         / scale
     )
+
+
+def _same_pair_distances(
+    left_landmarks: np.ndarray,
+    right_landmarks: np.ndarray,
+) -> tuple[float, float]:
+    index_distance = _normalized_landmark_distance(
+        left_landmarks,
+        INDEX_TIP,
+        right_landmarks,
+        INDEX_TIP,
+    )
+    thumb_distance = _normalized_landmark_distance(
+        left_landmarks,
+        THUMB_TIP,
+        right_landmarks,
+        THUMB_TIP,
+    )
+    return index_distance, thumb_distance
+
+
+def _cross_pair_distances(
+    left_landmarks: np.ndarray,
+    right_landmarks: np.ndarray,
+) -> tuple[float, float]:
+    left_index_to_right_thumb = _normalized_landmark_distance(
+        left_landmarks,
+        INDEX_TIP,
+        right_landmarks,
+        THUMB_TIP,
+    )
+    left_thumb_to_right_index = _normalized_landmark_distance(
+        left_landmarks,
+        THUMB_TIP,
+        right_landmarks,
+        INDEX_TIP,
+    )
+    return left_index_to_right_thumb, left_thumb_to_right_index
 
 
 def _is_clasp(
@@ -326,20 +358,20 @@ def _is_clasp(
     left_states: np.ndarray,
     right_states: np.ndarray,
 ) -> bool:
-    open_left = classify_stack_gesture(left_states) == "paper"
-    open_right = classify_stack_gesture(right_states) == "paper"
-    if not open_left or not open_right:
+    _ = left_states, right_states
+    if normalized_pinch_distance(left_landmarks) < DEFAULT_SONALDO_MIN_PINCH_DISTANCE:
+        return False
+    if normalized_pinch_distance(right_landmarks) < DEFAULT_SONALDO_MIN_PINCH_DISTANCE:
         return False
 
-    fingertip_distance = _normalized_pair_distance(
-        left_landmarks,
-        right_landmarks,
-        (INDEX_TIP, MIDDLE_TIP, 16, 20),
+    same_index_distance, same_thumb_distance = _same_pair_distances(
+        left_landmarks, right_landmarks
     )
-    center_distance = _hands_center_distance(left_landmarks, right_landmarks)
+    cross_distances = _cross_pair_distances(left_landmarks, right_landmarks)
     return bool(
-        fingertip_distance <= DEFAULT_CLASP_DISTANCE_THRESHOLD
-        and center_distance <= DEFAULT_CLASP_CENTER_DISTANCE_THRESHOLD
+        same_index_distance <= DEFAULT_SPECIAL_TOUCH_DISTANCE_THRESHOLD
+        and same_thumb_distance <= DEFAULT_SPECIAL_TOUCH_DISTANCE_THRESHOLD
+        and min(cross_distances) >= DEFAULT_SPECIAL_FAR_PAIR_DISTANCE_THRESHOLD
     )
 
 
@@ -356,12 +388,15 @@ def _is_sonaldo(
     if normalized_pinch_distance(right_landmarks) < DEFAULT_SONALDO_MIN_PINCH_DISTANCE:
         return False
 
-    fingertip_distance = _normalized_pair_distance(
-        left_landmarks,
-        right_landmarks,
-        (THUMB_TIP, INDEX_TIP),
+    same_distances = _same_pair_distances(left_landmarks, right_landmarks)
+    cross_index_distance, cross_thumb_distance = _cross_pair_distances(
+        left_landmarks, right_landmarks
     )
-    return fingertip_distance <= DEFAULT_SONALDO_DISTANCE_THRESHOLD
+    return bool(
+        cross_index_distance <= DEFAULT_SPECIAL_TOUCH_DISTANCE_THRESHOLD
+        and cross_thumb_distance <= DEFAULT_SPECIAL_TOUCH_DISTANCE_THRESHOLD
+        and min(same_distances) >= DEFAULT_SPECIAL_FAR_PAIR_DISTANCE_THRESHOLD
+    )
 
 
 class BoolDebouncer:

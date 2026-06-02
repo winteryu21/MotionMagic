@@ -20,6 +20,9 @@ from src.ai.gesture_modes import (
     normalized_pinch_distance,
 )
 
+THUMB_TIP_ID = 4
+INDEX_TIP_ID = 8
+
 
 def _base_landmarks() -> np.ndarray:
     """테스트용 기본 손 랜드마크를 생성한다."""
@@ -73,6 +76,26 @@ def _shifted(landmarks: np.ndarray, dx: float) -> np.ndarray:
     shifted = landmarks.copy()
     shifted[:, 0] += dx
     return shifted
+
+
+def _diamond_landmarks() -> tuple[np.ndarray, np.ndarray]:
+    left = _base_landmarks()
+    right = _base_landmarks()
+    left[INDEX_TIP_ID] = [0.10, -0.70, 0.0]
+    right[INDEX_TIP_ID] = [0.12, -0.68, 0.0]
+    left[THUMB_TIP_ID] = [0.60, -0.70, 0.0]
+    right[THUMB_TIP_ID] = [0.62, -0.68, 0.0]
+    return left, right
+
+
+def _sonaldo_landmarks() -> tuple[np.ndarray, np.ndarray]:
+    left = _aim_landmarks(pinch_distance=1.0)
+    right = _aim_landmarks(pinch_distance=1.0)
+    left[INDEX_TIP_ID] = [0.10, -0.70, 0.0]
+    right[THUMB_TIP_ID] = [0.12, -0.68, 0.0]
+    left[THUMB_TIP_ID] = [0.60, -0.70, 0.0]
+    right[INDEX_TIP_ID] = [0.62, -0.68, 0.0]
+    return left, right
 
 
 def test_classifies_left_stack_gestures() -> None:
@@ -134,9 +157,8 @@ def test_assign_hands_keeps_best_left_and_right() -> None:
 
 
 def test_classifies_clasp_when_open_hands_are_close() -> None:
-    """합장은 두 열린 손의 손끝들이 가까운 양손 제스처다."""
-    left = _shifted(_base_landmarks(), -0.08)
-    right = _shifted(_base_landmarks(), 0.08)
+    """clasp는 검지끼리, 엄지끼리 닿는 다이아몬드 제스처다."""
+    left, right = _diamond_landmarks()
 
     assert classify_special_gesture(left, right) == "clasp"
 
@@ -150,9 +172,8 @@ def test_rejects_clasp_when_hands_are_far_apart() -> None:
 
 
 def test_classifies_sonaldo_from_two_open_aim_poses() -> None:
-    """손흥민 시그니처는 양손 엄지/검지가 열린 조준형 포즈다."""
-    left = _shifted(_aim_landmarks(pinch_distance=1.0), -0.08)
-    right = _shifted(_aim_landmarks(pinch_distance=1.0), 0.08)
+    """손흥민 시그니처는 양손 엄지/검지가 교차로 닿는 포즈다."""
+    left, right = _sonaldo_landmarks()
 
     assert classify_special_gesture(left, right) == "sonaldo"
 

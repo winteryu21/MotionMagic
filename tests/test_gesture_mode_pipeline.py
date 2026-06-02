@@ -12,6 +12,9 @@ from src.bridge.gesture_mode_pipeline import (
     GestureModePipelineConfig,
 )
 
+THUMB_TIP_ID = 4
+INDEX_TIP_ID = 8
+
 
 def _base_landmarks() -> np.ndarray:
     """테스트용 기본 손 랜드마크를 생성한다."""
@@ -58,6 +61,26 @@ def _shifted(landmarks: np.ndarray, dx: float) -> np.ndarray:
     shifted = landmarks.copy()
     shifted[:, 0] += dx
     return shifted
+
+
+def _diamond_landmarks() -> tuple[np.ndarray, np.ndarray]:
+    left = _base_landmarks()
+    right = _base_landmarks()
+    left[INDEX_TIP_ID] = [0.36, 0.25, 0.0]
+    right[INDEX_TIP_ID] = [0.38, 0.27, 0.0]
+    left[THUMB_TIP_ID] = [0.64, 0.55, 0.0]
+    right[THUMB_TIP_ID] = [0.66, 0.57, 0.0]
+    return left, right
+
+
+def _sonaldo_landmarks() -> tuple[np.ndarray, np.ndarray]:
+    left = _aim_landmarks()
+    right = _aim_landmarks()
+    left[INDEX_TIP_ID] = [0.36, 0.25, 0.0]
+    right[THUMB_TIP_ID] = [0.38, 0.27, 0.0]
+    left[THUMB_TIP_ID] = [0.64, 0.30, 0.0]
+    right[INDEX_TIP_ID] = [0.66, 0.32, 0.0]
+    return left, right
 
 
 def _pipeline() -> GestureModePipeline:
@@ -191,8 +214,9 @@ def test_pipeline_tracks_two_hand_gate_without_emitting_special_event() -> None:
 def test_pipeline_emits_clasp_special_and_suppresses_stack() -> None:
     """합장 특수 모드는 왼손 paper 스택으로 새지 않는다."""
     pipeline = _pipeline()
-    left = HandObservation("Left", _shifted(_base_landmarks(), -0.03), score=0.9)
-    right = HandObservation("Right", _shifted(_base_landmarks(), 0.03), score=0.8)
+    left_landmarks, right_landmarks = _diamond_landmarks()
+    left = HandObservation("Left", left_landmarks, score=0.9)
+    right = HandObservation("Right", right_landmarks, score=0.8)
 
     assert pipeline.update([left, right], timestamp=0.00) == []
     events = pipeline.update([left, right], timestamp=0.01)
@@ -207,8 +231,9 @@ def test_pipeline_emits_clasp_special_and_suppresses_stack() -> None:
 def test_pipeline_emits_sonaldo_special_and_suppresses_aim() -> None:
     """손흥민 시그니처 특수 모드는 오른손 aim 이벤트로 새지 않는다."""
     pipeline = _pipeline()
-    left = HandObservation("Left", _shifted(_aim_landmarks(), -0.03), score=0.9)
-    right = HandObservation("Right", _shifted(_aim_landmarks(), 0.03), score=0.8)
+    left_landmarks, right_landmarks = _sonaldo_landmarks()
+    left = HandObservation("Left", left_landmarks, score=0.9)
+    right = HandObservation("Right", right_landmarks, score=0.8)
 
     assert pipeline.update([left, right], timestamp=0.00) == []
     events = pipeline.update([left, right], timestamp=0.01)

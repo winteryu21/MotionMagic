@@ -22,8 +22,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.ai.preprocessor import (
     LABEL_TO_INDEX,
+    extract_landmarks,
     normalize_landmarks,
-    extract_2d_landmarks,
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -35,6 +35,22 @@ logger = logging.getLogger(__name__)
 
 SPLIT_RATIOS = (0.8, 0.1, 0.1)  # Train, Val, Test
 SPLIT_NAMES = ("train", "val", "test")
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _project_path(path: str) -> Path:
+    """상대경로를 프로젝트 루트 기준 경로로 변환한다.
+
+    Args:
+        path: CLI에서 받은 경로 문자열.
+
+    Returns:
+        절대경로 또는 프로젝트 루트 기준 경로.
+    """
+    result = Path(path)
+    if result.is_absolute():
+        return result
+    return PROJECT_ROOT / result
 
 
 def load_raw_data(raw_dir: Path) -> list[dict]:
@@ -80,9 +96,13 @@ def preprocess_samples(samples: list[dict]) -> list[dict]:
             skipped += 1
             continue
 
+        if "landmarks" not in sample:
+            skipped += 1
+            continue
+
         raw_landmarks = np.array(sample["landmarks"], dtype=np.float32)
-        coords_2d = extract_2d_landmarks(raw_landmarks)
-        normalized = normalize_landmarks(coords_2d)
+        coords = extract_landmarks(raw_landmarks)
+        normalized = normalize_landmarks(coords)
 
         if normalized is None:
             skipped += 1
@@ -92,6 +112,7 @@ def preprocess_samples(samples: list[dict]) -> list[dict]:
             {
                 "label": label,
                 "landmarks": normalized.tolist(),
+                "handedness": sample.get("handedness"),
             }
         )
 
@@ -134,16 +155,12 @@ def split_and_save(
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(split_data, f, ensure_ascii=False)
         print(f"  {split_name}: {len(split_data)} samples → {filepath}")
-        logger.info(
-            "%s: %d samples → %s", split_name, len(split_data), filepath
-        )
+        logger.info("%s: %d samples → %s", split_name, len(split_data), filepath)
 
 
 def main() -> None:
     """CLI 엔트리포인트."""
-    parser = argparse.ArgumentParser(
-        description="MotionMagic 데이터 전처리 및 분할"
-    )
+    parser = argparse.ArgumentParser(description="MotionMagic 데이터 전처리 및 분할")
     parser.add_argument(
         "--raw",
         type=str,
@@ -158,8 +175,8 @@ def main() -> None:
     )
 
     args = parser.parse_args()
-    raw_dir = Path(args.raw)
-    output_dir = Path(args.out)
+    raw_dir = _project_path(args.raw)
+    output_dir = _project_path(args.out)
 
     print(f"\n{'='*50}")
     print(" 데이터 전처리 시작")
@@ -187,7 +204,7 @@ def main() -> None:
     from collections import Counter
 
     label_counts = Counter(s["label"] for s in processed)
-    print(f"\n클래스별 통계:")
+    print("\n클래스별 통계:")
     for label, count in sorted(label_counts.items()):
         print(f"  {label}: {count}")
 

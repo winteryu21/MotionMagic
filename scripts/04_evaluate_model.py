@@ -24,11 +24,47 @@ from src.ai.preprocessor import (
     GESTURE_LABELS,
     LABEL_TO_INDEX,
     NUM_CLASSES,
+    NUM_COORDS,
     extract_finger_states,
+    extract_landmarks,
 )
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _project_path(path: str) -> Path:
+    """상대경로를 프로젝트 루트 기준 경로로 변환한다.
+
+    Args:
+        path: CLI에서 받은 경로 문자열.
+
+    Returns:
+        절대경로 또는 프로젝트 루트 기준 경로.
+    """
+    result = Path(path)
+    if result.is_absolute():
+        return result
+    return PROJECT_ROOT / result
+
+
+def _checkpoint_num_coords(checkpoint: dict) -> int | None:
+    """체크포인트에서 모델 입력 좌표 차원을 추정한다.
+
+    Args:
+        checkpoint: PyTorch 체크포인트 딕셔너리.
+
+    Returns:
+        입력 좌표 차원. 알 수 없으면 ``None``.
+    """
+    if "num_coords" in checkpoint:
+        return int(checkpoint["num_coords"])
+
+    first_weight = checkpoint["model_state_dict"].get("conv_block.0.weight")
+    if first_weight is None:
+        return None
+    return int(first_weight.shape[1])
 
 
 def load_test_data(
@@ -50,7 +86,10 @@ def load_test_data(
     labels_list = []
 
     for sample in samples:
-        lm = np.array(sample["landmarks"], dtype=np.float32)
+        if sample["label"] not in LABEL_TO_INDEX:
+            continue
+
+        lm = extract_landmarks(np.array(sample["landmarks"], dtype=np.float32))
         fs = extract_finger_states(lm)
         label = LABEL_TO_INDEX[sample["label"]]
 
@@ -80,9 +119,7 @@ def evaluate_onnx(
     """
     import onnxruntime as ort
 
-    session = ort.InferenceSession(
-        str(model_path), providers=["CPUExecutionProvider"]
-    )
+    session = ort.InferenceSession(str(model_path), providers=["CPUExecutionProvider"])
     input_names = [inp.name for inp in session.get_inputs()]
 
     preds = []
@@ -98,7 +135,7 @@ def evaluate_onnx(
         preds.append(int(np.argmax(logits)))
 
     # 정확도
-    correct = sum(p == l for p, l in zip(preds, labels_list))
+    correct = sum(pred == label for pred, label in zip(preds, labels_list))
     accuracy = correct / len(labels_list)
 
     # 혼동 행렬
@@ -130,10 +167,15 @@ def evaluate_pytorch(
 
     from src.ai.model import GestureCNN
 
-    checkpoint = torch.load(
-        model_path, map_location="cpu", weights_only=False
-    )
+    checkpoint = torch.load(model_path, map_location="cpu", weights_only=False)
     num_classes = checkpoint.get("num_classes", NUM_CLASSES)
+    checkpoint_num_coords = _checkpoint_num_coords(checkpoint)
+    if checkpoint_num_coords != NUM_COORDS:
+        message = (
+            f"체크포인트 입력 차원({checkpoint_num_coords})이 "
+            f"현재 코드({NUM_COORDS})와 다릅니다. "
+        )
+        raise ValueError(message + "3D 전처리로 다시 학습한 뒤 평가하세요.")
 
     model = GestureCNN(num_classes=num_classes)
     model.load_state_dict(checkpoint["model_state_dict"])
@@ -147,7 +189,7 @@ def evaluate_pytorch(
             logits = model(lm_tensor, fs_tensor)
             preds.append(int(logits.argmax(dim=1).item()))
 
-    correct = sum(p == l for p, l in zip(preds, labels_list))
+    correct = sum(pred == label for pred, label in zip(preds, labels_list))
     accuracy = correct / len(labels_list)
 
     cm = np.zeros((NUM_CLASSES, NUM_CLASSES), dtype=int)
@@ -168,7 +210,7 @@ def print_report(accuracy: float, cm: np.ndarray) -> None:
 
     print(f"\n  전체 정확도: {accuracy:.2%}")
     print(f"\n  {'='*60}")
-    print(f"  혼동 행렬:")
+    print("  혼동 행렬:")
     print(f"  {'':>12}", end="")
     for name in class_names:
         print(f" {name:>10}", end="")
@@ -249,9 +291,7 @@ def save_confusion_matrix(cm: np.ndarray, save_path: Path) -> None:
 
 def main() -> None:
     """CLI 엔트리포인트."""
-    parser = argparse.ArgumentParser(
-        description="MotionMagic 모델 평가"
-    )
+    parser = argparse.ArgumentParser(description="MotionMagic 모델 평가")
     parser.add_argument(
         "--model",
         type=str,
@@ -266,7 +306,7 @@ def main() -> None:
     )
 
     args = parser.parse_args()
-    test_path = Path(args.test_data)
+    test_path = _project_path(args.test_data)
 
     if not test_path.exists():
         print(f"테스트 데이터 없음: {test_path}")
@@ -275,10 +315,10 @@ def main() -> None:
 
     # 모델 파일 자동 감지
     if args.model:
-        model_path = Path(args.model)
+        model_path = _project_path(args.model)
     else:
-        onnx_path = Path("models/gesture_cnn.onnx")
-        pth_path = Path("models/gesture_cnn_best.pth")
+        onnx_path = PROJECT_ROOT / "models" / "gesture_cnn.onnx"
+        pth_path = PROJECT_ROOT / "models" / "gesture_cnn_best.pth"
         if onnx_path.exists():
             model_path = onnx_path
         elif pth_path.exists():
@@ -310,7 +350,7 @@ def main() -> None:
     print_report(accuracy, cm)
 
     # 혼동 행렬 저장
-    cm_path = Path("models/confusion_matrix.png")
+    cm_path = PROJECT_ROOT / "models" / "confusion_matrix.png"
     save_confusion_matrix(cm, cm_path)
 
     print(f"\n{'='*60}")

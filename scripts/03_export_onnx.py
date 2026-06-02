@@ -21,6 +21,41 @@ import torch
 from src.ai.model import GestureCNN
 from src.ai.preprocessor import NUM_CLASSES, NUM_COORDS, NUM_LANDMARKS
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _project_path(path: str) -> Path:
+    """상대경로를 프로젝트 루트 기준 경로로 변환한다.
+
+    Args:
+        path: CLI에서 받은 경로 문자열.
+
+    Returns:
+        절대경로 또는 프로젝트 루트 기준 경로.
+    """
+    result = Path(path)
+    if result.is_absolute():
+        return result
+    return PROJECT_ROOT / result
+
+
+def _checkpoint_num_coords(checkpoint: dict) -> int | None:
+    """체크포인트에서 모델 입력 좌표 차원을 추정한다.
+
+    Args:
+        checkpoint: PyTorch 체크포인트 딕셔너리.
+
+    Returns:
+        입력 좌표 차원. 알 수 없으면 ``None``.
+    """
+    if "num_coords" in checkpoint:
+        return int(checkpoint["num_coords"])
+
+    first_weight = checkpoint["model_state_dict"].get("conv_block.0.weight")
+    if first_weight is None:
+        return None
+    return int(first_weight.shape[1])
+
 
 def export_to_onnx(
     checkpoint_path: Path,
@@ -35,10 +70,15 @@ def export_to_onnx(
         opset_version: ONNX opset 버전.
     """
     # 체크포인트 로드
-    checkpoint = torch.load(
-        checkpoint_path, map_location="cpu", weights_only=False
-    )
+    checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
     num_classes = checkpoint.get("num_classes", NUM_CLASSES)
+    checkpoint_num_coords = _checkpoint_num_coords(checkpoint)
+    if checkpoint_num_coords != NUM_COORDS:
+        message = (
+            f"체크포인트 입력 차원({checkpoint_num_coords})이 "
+            f"현재 코드({NUM_COORDS})와 다릅니다. "
+        )
+        raise ValueError(message + "3D 전처리로 다시 학습한 뒤 export 하세요.")
 
     model = GestureCNN(num_classes=num_classes)
     model.load_state_dict(checkpoint["model_state_dict"])
@@ -49,9 +89,7 @@ def export_to_onnx(
     print(f"  검증 정확도: {checkpoint.get('val_acc', 0):.2%}")
 
     # 더미 입력 생성
-    dummy_landmarks = torch.randn(
-        1, NUM_LANDMARKS, NUM_COORDS
-    )  # (1, 21, 2)
+    dummy_landmarks = torch.randn(1, NUM_LANDMARKS, NUM_COORDS)  # (1, 21, 3)
     dummy_fingers = torch.randn(1, 5)  # (1, 5)
 
     # ONNX 내보내기
@@ -86,17 +124,17 @@ def verify_onnx(onnx_path: Path) -> bool:
         검증 성공 여부.
     """
     try:
-        import onnxruntime as ort
         import numpy as np
+        import onnxruntime as ort
 
         session = ort.InferenceSession(
             str(onnx_path), providers=["CPUExecutionProvider"]
         )
 
         # 테스트 추론
-        test_landmarks = np.random.randn(
-            1, NUM_LANDMARKS, NUM_COORDS
-        ).astype(np.float32)
+        test_landmarks = np.random.randn(1, NUM_LANDMARKS, NUM_COORDS).astype(
+            np.float32
+        )
         test_fingers = np.random.randn(1, 5).astype(np.float32)
 
         outputs = session.run(
@@ -123,9 +161,7 @@ def verify_onnx(onnx_path: Path) -> bool:
 
 def main() -> None:
     """CLI 엔트리포인트."""
-    parser = argparse.ArgumentParser(
-        description="MotionMagic PyTorch → ONNX 변환"
-    )
+    parser = argparse.ArgumentParser(description="MotionMagic PyTorch → ONNX 변환")
     parser.add_argument(
         "--checkpoint",
         type=str,
@@ -140,8 +176,8 @@ def main() -> None:
     )
 
     args = parser.parse_args()
-    checkpoint_path = Path(args.checkpoint)
-    output_path = Path(args.output)
+    checkpoint_path = _project_path(args.checkpoint)
+    output_path = _project_path(args.output)
 
     if not checkpoint_path.exists():
         print(f"체크포인트 파일 없음: {checkpoint_path}")
@@ -155,7 +191,7 @@ def main() -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     export_to_onnx(checkpoint_path, output_path)
 
-    print(f"\n  ONNX 모델 검증 중...")
+    print("\n  ONNX 모델 검증 중...")
     verify_onnx(output_path)
 
     print(f"\n{'='*50}")

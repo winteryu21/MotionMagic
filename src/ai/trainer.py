@@ -16,7 +16,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 
 from src.ai.model import GestureCNN
-from src.ai.preprocessor import NUM_CLASSES
+from src.ai.preprocessor import NUM_CLASSES, NUM_COORDS
 
 logger = logging.getLogger(__name__)
 
@@ -144,12 +144,11 @@ class GestureTrainer:
                         "val_acc": val_acc,
                         "val_loss": val_loss,
                         "num_classes": self._model.num_classes,
+                        "num_coords": NUM_COORDS,
                     },
                     best_model_path,
                 )
-                logger.info(
-                    "최고 모델 저장: epoch=%d, val_acc=%.4f", epoch, val_acc
-                )
+                logger.info("최고 모델 저장: epoch=%d, val_acc=%.4f", epoch, val_acc)
                 print(f"  ★ 최고 모델 저장 (val_acc={val_acc:.2%})")
 
         print(f"\n{'='*60}")
@@ -171,7 +170,7 @@ class GestureTrainer:
         total = 0
 
         for landmarks, finger_states, labels in loader:
-            landmarks = landmarks.to(self._device)  # (B, 21, 2)
+            landmarks = landmarks.to(self._device)  # (B, 21, 3)
             finger_states = finger_states.to(self._device)  # (B, 5)
             labels = labels.to(self._device)  # (B,)
 

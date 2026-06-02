@@ -1,6 +1,6 @@
 """데이터 전처리 및 정규화.
 
-MediaPipe에서 추출한 손 관절 좌표를 위치·크기 불변 형태로
+MediaPipe에서 추출한 손 관절 3D 좌표를 위치·크기 불변 형태로
 정규화하고, 5차원 손가락 상태 힌트를 기하학적으로 도출한다.
 """
 
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 NUM_LANDMARKS = 21
-NUM_COORDS = 2  # X, Y만 사용 (Z축 제외)
+NUM_COORDS = 3  # X, Y, Z
 NUM_FINGERS = 5
 
 # 손가락별 (팁 인덱스, MCP/뿌리 인덱스) 매핑
@@ -40,7 +40,6 @@ GESTURE_LABELS: dict[int, str] = {
     1: "paper",
     2: "scissors",
     3: "trigger",
-    4: "idle",
 }
 
 LABEL_TO_INDEX: dict[str, int] = {v: k for k, v in GESTURE_LABELS.items()}
@@ -70,10 +69,10 @@ def _euclidean(a: np.ndarray, b: np.ndarray) -> float:
 # ---------------------------------------------------------------------------
 
 
-def extract_2d_landmarks(
+def extract_landmarks(
     landmarks_raw: list[dict[str, float]] | np.ndarray,
 ) -> np.ndarray:
-    """MediaPipe 랜드마크에서 X, Y 2D 좌표만 추출.
+    """MediaPipe 랜드마크에서 X, Y, Z 좌표를 추출.
 
     Args:
         landmarks_raw: 21개 관절의 좌표 목록.
@@ -81,38 +80,56 @@ def extract_2d_landmarks(
             또는 ``(21, 2)`` 혹은 ``(21, 3)`` NumPy 배열.
 
     Returns:
-        ``(21, 2)`` NumPy 배열.
+        ``(21, 3)`` NumPy 배열. 2D 입력은 Z축을 0으로 채운다.
     """
     if isinstance(landmarks_raw, np.ndarray):
-        return landmarks_raw[:, :NUM_COORDS].copy()
+        coords = landmarks_raw.astype(np.float32, copy=False)
+        if coords.shape[1] == NUM_COORDS:
+            return coords.copy()
+        padded = np.zeros((coords.shape[0], NUM_COORDS), dtype=np.float32)
+        copy_dims = min(coords.shape[1], NUM_COORDS)
+        padded[:, :copy_dims] = coords[:, :copy_dims]
+        return padded
 
-    coords = [[lm["x"], lm["y"]] for lm in landmarks_raw]
-    return np.array(coords, dtype=np.float32)  # (21, 2)
+    coords = [[lm["x"], lm["y"], lm.get("z", 0.0)] for lm in landmarks_raw]
+    return np.array(coords, dtype=np.float32)  # (21, 3)
+
+
+def extract_2d_landmarks(
+    landmarks_raw: list[dict[str, float]] | np.ndarray,
+) -> np.ndarray:
+    """MediaPipe 랜드마크에서 X, Y 2D 좌표만 추출.
+
+    Args:
+        landmarks_raw: 21개 관절의 좌표 목록.
+
+    Returns:
+        ``(21, 2)`` NumPy 배열.
+    """
+    return extract_landmarks(landmarks_raw)[:, :2]
 
 
 def normalize_landmarks(landmarks: np.ndarray) -> np.ndarray | None:
     """손목 기준 평행 이동 + 크기 정규화.
 
     Args:
-        landmarks: ``(21, 2)`` 정규화 전 좌표.
+        landmarks: ``(21, 2)`` 또는 ``(21, 3)`` 정규화 전 좌표.
 
     Returns:
-        ``(21, 2)`` 정규화된 좌표. 기준 거리가 0이면 ``None``.
+        입력과 같은 좌표 차원의 정규화된 좌표. 기준 거리가 0이면 ``None``.
     """
-    wrist = landmarks[SCALE_REF_START].copy()  # (2,)
+    wrist = landmarks[SCALE_REF_START].copy()  # (C,)
 
     # 1) 평행 이동: 손목을 원점으로
-    centered = landmarks - wrist  # (21, 2)
+    centered = landmarks - wrist  # (21, C)
 
     # 2) 크기 정규화: 손목→중지MCP 거리를 기준척도로
-    ref_dist = _euclidean(
-        centered[SCALE_REF_START], centered[SCALE_REF_END]
-    )
+    ref_dist = _euclidean(centered[SCALE_REF_START], centered[SCALE_REF_END])
     if ref_dist < 1e-6:
         logger.warning("기준 거리가 0에 가까워 정규화 불가")
         return None
 
-    normalized = centered / ref_dist  # (21, 2)
+    normalized = centered / ref_dist  # (21, C)
     return normalized.astype(np.float32)
 
 
@@ -124,7 +141,7 @@ def extract_finger_states(landmarks: np.ndarray) -> np.ndarray:
     비율이 임계값 이상이면 펴진 상태(1), 미만이면 접힌 상태(0).
 
     Args:
-        landmarks: ``(21, 2)`` 정규화된 좌표 (손목 원점 기준).
+        landmarks: ``(21, 2)`` 또는 ``(21, 3)`` 정규화된 좌표.
 
     Returns:
         ``(5,)`` 배열. 각 원소는 0(접힘) 또는 1(펴짐).
@@ -132,9 +149,7 @@ def extract_finger_states(landmarks: np.ndarray) -> np.ndarray:
     wrist = landmarks[0]
     states = np.zeros(NUM_FINGERS, dtype=np.float32)
 
-    for i, (tip_id, mcp_id) in enumerate(
-        zip(FINGER_TIP_IDS, FINGER_MCP_IDS)
-    ):
+    for i, (tip_id, mcp_id) in enumerate(zip(FINGER_TIP_IDS, FINGER_MCP_IDS)):
         tip_dist = _euclidean(wrist, landmarks[tip_id])
         mcp_dist = _euclidean(wrist, landmarks[mcp_id])
 
@@ -159,12 +174,12 @@ def augment_rotation(
     범위에서 무작위 각도로 회전한다.
 
     Args:
-        landmarks: ``(21, 2)`` 정규화된 좌표.
+        landmarks: ``(21, 2)`` 또는 ``(21, 3)`` 정규화된 좌표.
         max_angle_deg: 최대 회전 각도(도 단위).
         rng: NumPy 랜덤 생성기. ``None``이면 새로 생성.
 
     Returns:
-        ``(21, 2)`` 회전 적용된 좌표.
+        회전 적용된 좌표.
     """
     if rng is None:
         rng = np.random.default_rng()
@@ -175,7 +190,9 @@ def augment_rotation(
         [[cos_a, -sin_a], [sin_a, cos_a]], dtype=np.float32
     )  # (2, 2)
 
-    return (landmarks @ rotation_matrix.T).astype(np.float32)  # (21, 2)
+    rotated = landmarks.copy()
+    rotated[:, :2] = landmarks[:, :2] @ rotation_matrix.T
+    return rotated.astype(np.float32)  # (21, C)
 
 
 def augment_noise(
@@ -186,20 +203,34 @@ def augment_noise(
     """가우시안 노이즈 데이터 증강.
 
     Args:
-        landmarks: ``(21, 2)`` 정규화된 좌표.
+        landmarks: ``(21, 2)`` 또는 ``(21, 3)`` 정규화된 좌표.
         noise_std: 노이즈 표준편차.
         rng: NumPy 랜덤 생성기.
 
     Returns:
-        ``(21, 2)`` 노이즈가 추가된 좌표.
+        노이즈가 추가된 좌표.
     """
     if rng is None:
         rng = np.random.default_rng()
 
-    noise = rng.normal(0, noise_std, size=landmarks.shape).astype(
-        np.float32
-    )
+    noise = rng.normal(0, noise_std, size=landmarks.shape).astype(np.float32)
     return landmarks + noise
+
+
+def augment_mirror(landmarks: np.ndarray) -> np.ndarray:
+    """좌우 손 차이를 줄이기 위해 X축을 반전한다.
+
+    정규화 후 손목이 원점인 좌표를 대상으로 하며, Y/Z 좌표는 유지한다.
+
+    Args:
+        landmarks: ``(21, 2)`` 또는 ``(21, 3)`` 정규화된 좌표.
+
+    Returns:
+        X축만 반전한 좌표.
+    """
+    mirrored = landmarks.copy()
+    mirrored[:, 0] *= -1.0
+    return mirrored.astype(np.float32)
 
 
 def preprocess_single(
@@ -208,11 +239,11 @@ def preprocess_single(
     """단일 프레임의 원시 랜드마크를 전처리 피처로 변환.
 
     Returns:
-        ``(normalized_landmarks (21, 2), finger_states (5,))`` 튜플.
+        ``(normalized_landmarks (21, 3), finger_states (5,))`` 튜플.
         정규화에 실패하면 ``None``.
     """
-    coords_2d = extract_2d_landmarks(landmarks_raw)
-    normalized = normalize_landmarks(coords_2d)
+    coords = extract_landmarks(landmarks_raw)
+    normalized = normalize_landmarks(coords)
     if normalized is None:
         return None
 

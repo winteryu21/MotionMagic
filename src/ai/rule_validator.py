@@ -10,14 +10,7 @@ import logging
 
 import numpy as np
 
-from src.ai.preprocessor import (
-    FINGER_EXTENDED_THRESHOLD,
-    FINGER_MCP_IDS,
-    FINGER_TIP_IDS,
-    GESTURE_LABELS,
-    _euclidean,
-    extract_finger_states,
-)
+from src.ai.preprocessor import extract_finger_states
 
 logger = logging.getLogger(__name__)
 
@@ -38,13 +31,11 @@ EXPECTED_SCISSORS = [0, 1, 1, 0, 0]
 # trigger: 엄지+검지만 펴짐 (권총 모양)
 EXPECTED_TRIGGER = [1, 1, 0, 0, 0]
 
-# idle: 어떤 패턴이든 허용
-EXPECTED_PATTERNS: dict[str, list[int] | None] = {
+EXPECTED_PATTERNS: dict[str, list[int]] = {
     "rock": EXPECTED_ROCK,
     "paper": EXPECTED_PAPER,
     "scissors": EXPECTED_SCISSORS,
     "trigger": EXPECTED_TRIGGER,
-    "idle": None,  # idle은 규칙 검증 생략
 }
 
 # 허용 오차: 각 손가락에 대해 예상 패턴과 다를 수 있는 최대 개수
@@ -61,7 +52,7 @@ def validate_gesture(
 
     Args:
         gesture_label: CNN이 예측한 제스처 라벨 (예: ``"rock"``).
-        landmarks: ``(21, 2)`` 정규화된 2D 좌표.
+        landmarks: ``(21, 2)`` 또는 ``(21, 3)`` 정규화된 좌표.
         confidence: CNN 모델의 예측 확신도 (0.0 ~ 1.0).
         min_confidence: 최소 신뢰도 임계값.
 
@@ -70,26 +61,17 @@ def validate_gesture(
     """
     # 1) 신뢰도 필터
     if confidence < min_confidence:
-        logger.debug(
-            "신뢰도 미달: %.2f < %.2f → 무시", confidence, min_confidence
-        )
+        logger.debug("신뢰도 미달: %.2f < %.2f → 무시", confidence, min_confidence)
         return None
 
-    # 2) idle은 규칙 검증 없이 통과
-    if gesture_label == "idle":
-        return "idle"
-
-    # 3) 알 수 없는 라벨 처리
+    # 2) 알 수 없는 라벨 처리
     if gesture_label not in EXPECTED_PATTERNS:
         logger.warning("알 수 없는 제스처 라벨: '%s'", gesture_label)
         return None
 
-    # 4) 손가락 상태 기반 기하학적 검증
+    # 3) 손가락 상태 기반 기하학적 검증
     actual_states = extract_finger_states(landmarks)  # (5,)
     expected = EXPECTED_PATTERNS[gesture_label]
-
-    if expected is None:
-        return gesture_label
 
     mismatches = 0
     for i in range(len(expected)):
@@ -131,9 +113,7 @@ def select_primary_hand(
         return hands_data[0]
 
     # 신뢰도 상위 2개만 유지
-    sorted_by_score = sorted(
-        hands_data, key=lambda h: h["score"], reverse=True
-    )
+    sorted_by_score = sorted(hands_data, key=lambda h: h["score"], reverse=True)
     top_two = sorted_by_score[:2]
 
     # Y축이 더 높은(값이 작은 = 화면 위쪽) 손 선택

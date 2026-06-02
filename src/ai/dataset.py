@@ -18,11 +18,12 @@ from torch.utils.data import Dataset
 from src.ai.preprocessor import (
     LABEL_TO_INDEX,
     NUM_COORDS,
-    NUM_FINGERS,
     NUM_LANDMARKS,
+    augment_mirror,
     augment_noise,
     augment_rotation,
     extract_finger_states,
+    extract_landmarks,
 )
 
 logger = logging.getLogger(__name__)
@@ -35,9 +36,9 @@ class GestureDataset(Dataset):
     텐서 형태로 변환한다.
 
     각 샘플은 다음을 포함한다:
-    - ``landmarks``: ``(21, 2)`` 정규화된 2D 좌표
+    - ``landmarks``: ``(21, 3)`` 정규화된 3D 좌표
     - ``finger_states``: ``(5,)`` 손가락 상태 힌트
-    - ``label``: 정수 라벨 (0~4)
+    - ``label``: 정수 라벨 (0~3)
 
     Args:
         data_dir: 전처리된 JSON 파일이 있는 디렉터리 경로.
@@ -81,14 +82,12 @@ class GestureDataset(Dataset):
                     logger.warning("알 수 없는 라벨 '%s' 무시", label_str)
                     continue
 
-                landmarks = np.array(
-                    sample["landmarks"], dtype=np.float32
-                )  # (21, 2)
+                landmarks = extract_landmarks(
+                    np.array(sample["landmarks"], dtype=np.float32)
+                )  # (21, 3)
 
                 if landmarks.shape != (NUM_LANDMARKS, NUM_COORDS):
-                    logger.warning(
-                        "잘못된 landmark 형상 %s, 무시", landmarks.shape
-                    )
+                    logger.warning("잘못된 landmark 형상 %s, 무시", landmarks.shape)
                     continue
 
                 self._landmarks.append(landmarks)
@@ -104,9 +103,7 @@ class GestureDataset(Dataset):
         """데이터셋 크기."""
         return len(self._landmarks)
 
-    def __getitem__(
-        self, idx: int
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """인덱스에 해당하는 샘플 반환.
 
         Args:
@@ -114,15 +111,17 @@ class GestureDataset(Dataset):
 
         Returns:
             ``(landmarks, finger_states, label)`` 튜플.
-            - landmarks: ``(21, 2)`` float32 텐서
+            - landmarks: ``(21, 3)`` float32 텐서
             - finger_states: ``(5,)`` float32 텐서
             - label: ``()`` int64 텐서
         """
-        landmarks = self._landmarks[idx].copy()  # (21, 2)
+        landmarks = self._landmarks[idx].copy()  # (21, 3)
         label = self._labels[idx]
 
         # 데이터 증강 (학습 시만)
         if self._augment:
+            if self._rng.random() < 0.5:
+                landmarks = augment_mirror(landmarks)
             landmarks = augment_rotation(
                 landmarks,
                 max_angle_deg=self._max_rotation_deg,
@@ -138,7 +137,7 @@ class GestureDataset(Dataset):
         finger_states = extract_finger_states(landmarks)  # (5,)
 
         return (
-            torch.from_numpy(landmarks),  # (21, 2)
+            torch.from_numpy(landmarks),  # (21, 3)
             torch.from_numpy(finger_states),  # (5,)
             torch.tensor(label, dtype=torch.long),  # ()
         )

@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 from src.ai.rule_validator import (
     select_primary_hand,
     validate_gesture,
 )
-
 
 # ---------------------------------------------------------------------------
 # 테스트 유틸
@@ -81,12 +79,6 @@ class TestValidateGesture:
         lm = _make_open_hand()
         result = validate_gesture("rock", lm, confidence=0.95)
         assert result is None
-
-    def test_idle_always_passes(self) -> None:
-        """idle은 규칙 검증 없이 통과."""
-        lm = _make_open_hand()
-        result = validate_gesture("idle", lm, confidence=0.90)
-        assert result == "idle"
 
     def test_unknown_gesture_rejected(self) -> None:
         """알 수 없는 제스처 라벨 → None."""

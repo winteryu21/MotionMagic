@@ -17,7 +17,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import torch
 from torch.utils.data import DataLoader
 
 from src.ai.dataset import GestureDataset
@@ -26,13 +25,27 @@ from src.ai.trainer import GestureTrainer
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _project_path(path: str) -> Path:
+    """상대경로를 프로젝트 루트 기준 경로로 변환한다.
+
+    Args:
+        path: CLI에서 받은 경로 문자열.
+
+    Returns:
+        절대경로 또는 프로젝트 루트 기준 경로.
+    """
+    result = Path(path)
+    if result.is_absolute():
+        return result
+    return PROJECT_ROOT / result
 
 
 def main() -> None:
     """CLI 엔트리포인트."""
-    parser = argparse.ArgumentParser(
-        description="MotionMagic 제스처 분류 모델 학습"
-    )
+    parser = argparse.ArgumentParser(description="MotionMagic 제스처 분류 모델 학습")
     parser.add_argument(
         "--data",
         type=str,
@@ -71,8 +84,8 @@ def main() -> None:
     )
 
     args = parser.parse_args()
-    data_dir = Path(args.data)
-    save_dir = Path(args.save_dir)
+    data_dir = _project_path(args.data)
+    save_dir = _project_path(args.save_dir)
 
     # 데이터셋 로드
     print(f"\n{'='*60}")
@@ -82,19 +95,13 @@ def main() -> None:
     train_dataset = GestureDataset(data_dir, augment=True)
     val_dataset = GestureDataset(data_dir, augment=False)
 
-    # train.json과 val.json이 분리되지 않은 경우를 대비하여
-    # data_dir 내에 train.json, val.json이 있으면 각각 로드
-    train_dir = data_dir
-    val_dir = data_dir
-
     train_json = data_dir / "train.json"
     val_json = data_dir / "val.json"
 
     if train_json.exists() and val_json.exists():
         # 분할된 파일이 있으면 임시 디렉터리로 분리 로드
-        import json
-        import tempfile
         import shutil
+        import tempfile
 
         # train 데이터를 임시 디렉터리에 복사
         train_tmp = Path(tempfile.mkdtemp())
@@ -119,7 +126,7 @@ def main() -> None:
 
     # 클래스별 통계
     train_counts = train_dataset.get_class_counts()
-    print(f"\n  클래스별 학습 데이터:")
+    print("\n  클래스별 학습 데이터:")
     for label, count in train_counts.items():
         print(f"    {label}: {count}")
 

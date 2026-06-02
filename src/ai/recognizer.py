@@ -13,9 +13,8 @@ import numpy as np
 
 from src.ai.preprocessor import (
     GESTURE_LABELS,
-    NUM_CLASSES,
-    extract_2d_landmarks,
     extract_finger_states,
+    extract_landmarks,
     normalize_landmarks,
 )
 
@@ -27,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_MODEL_PATH = Path("models/gesture_cnn.onnx")
 DEFAULT_CONFIDENCE_THRESHOLD = 0.85
+DEFAULT_MARGIN_THRESHOLD = 0.15
 
 
 # ---------------------------------------------------------------------------
@@ -49,9 +49,11 @@ class GestureRecognizer:
         self,
         model_path: Path | str = DEFAULT_MODEL_PATH,
         confidence_threshold: float = DEFAULT_CONFIDENCE_THRESHOLD,
+        margin_threshold: float = DEFAULT_MARGIN_THRESHOLD,
     ) -> None:
         self._model_path = Path(model_path)
         self._confidence_threshold = confidence_threshold
+        self._margin_threshold = margin_threshold
         self._session = None
 
         self._load_model()
@@ -93,14 +95,14 @@ class GestureRecognizer:
             return None
 
         # 전처리
-        coords_2d = extract_2d_landmarks(landmarks_raw)  # (21, 2)
-        normalized = normalize_landmarks(coords_2d)
+        coords = extract_landmarks(landmarks_raw)  # (21, 3)
+        normalized = normalize_landmarks(coords)
         if normalized is None:
             return None
 
         finger_states = extract_finger_states(normalized)  # (5,)
 
-        # 배치 차원 추가: (1, 21, 2), (1, 5)
+        # 배치 차원 추가: (1, 21, 3), (1, 5)
         landmarks_input = normalized[np.newaxis, :, :].astype(np.float32)
         fingers_input = finger_states[np.newaxis, :].astype(np.float32)
 
@@ -123,6 +125,8 @@ class GestureRecognizer:
         # 최고 확률 클래스
         pred_idx = int(np.argmax(probs))
         confidence = float(probs[pred_idx])
+        sorted_probs = np.sort(probs)
+        margin = float(sorted_probs[-1] - sorted_probs[-2])
 
         if confidence < self._confidence_threshold:
             logger.debug(
@@ -132,5 +136,17 @@ class GestureRecognizer:
             )
             return None
 
-        gesture_label = GESTURE_LABELS.get(pred_idx, "idle")
+        if margin < self._margin_threshold:
+            logger.debug(
+                "확률 간격 미달: %.2f < %.2f",
+                margin,
+                self._margin_threshold,
+            )
+            return None
+
+        gesture_label = GESTURE_LABELS.get(pred_idx)
+        if gesture_label is None:
+            logger.debug("알 수 없는 모델 출력 인덱스: %d", pred_idx)
+            return None
+
         return gesture_label, confidence

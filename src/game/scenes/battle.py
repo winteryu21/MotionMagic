@@ -83,7 +83,7 @@ class BattleField:
 
         return defeated_count
 
-    def draw(self, surface: pygame.Surface, active: bool) -> None:
+    def draw(self, surface: pygame.Surface, active: bool, player_image: pygame.Surface | None = None) -> None:
         field_rect = pygame.Rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT)
         if self.background is not None:
             surface.blit(self.background, (0, 0))
@@ -98,8 +98,13 @@ class BattleField:
         base_x = self.base_line_x
         player_x, player_y = self.player_pos
         pygame.draw.line(surface, COLOR_BASE, (base_x, 70), (base_x, SCREEN_HEIGHT - 70), 5)
-        pygame.draw.circle(surface, (90, 170, 255), (player_x, player_y), 22)
-        pygame.draw.circle(surface, COLOR_WHITE, (player_x, player_y), 26, 2)
+        if player_image is not None:
+            image = pygame.transform.flip(player_image, True, False) if self.index == 1 else player_image
+            rect = image.get_rect(midbottom=(player_x, player_y + 32))
+            surface.blit(image, rect)
+        else:
+            pygame.draw.circle(surface, (90, 170, 255), (player_x, player_y), 22)
+            pygame.draw.circle(surface, COLOR_WHITE, (player_x, player_y), 26, 2)
 
         for enemy in self.enemies:
             enemy.draw(surface, active)
@@ -132,6 +137,10 @@ class BattleScene:
         self.next_scene: str | None = None
         self.result_cleared_stage = 0
         self.game_over = False
+        self.player_idle_image, self.player_cast_frames = self._load_player_sprites()
+        self.player_cast_timer = 0.0
+        self.player_cast_frame_time = 0.06
+        self.player_cast_total_time = self.player_cast_frame_time * max(1, len(self.player_cast_frames))
 
     def _load_field_backgrounds(self) -> list[pygame.Surface]:
         project_root = Path(__file__).resolve().parents[3]
@@ -144,6 +153,45 @@ class BattleScene:
             image = pygame.transform.smoothscale(image, (SCREEN_WIDTH, SCREEN_HEIGHT))
             backgrounds.append(image)
         return backgrounds
+
+    def _load_player_sprites(self) -> tuple[pygame.Surface | None, list[pygame.Surface]]:
+        project_root = Path(__file__).resolve().parents[3]
+        sprite_dir = project_root / "assets" / "sprites" / "player"
+        idle_path = sprite_dir / "wizard_player_idle_64.png"
+        cast_path = sprite_dir / "wizard_staff_raise_96_sheet.png"
+
+        idle_image: pygame.Surface | None = None
+        cast_frames: list[pygame.Surface] = []
+
+        if idle_path.exists():
+            idle_image = pygame.image.load(str(idle_path)).convert_alpha()
+
+        if cast_path.exists():
+            sheet = pygame.image.load(str(cast_path)).convert_alpha()
+            frame_w = 96
+            frame_h = 96
+            cols = sheet.get_width() // frame_w
+            rows = sheet.get_height() // frame_h
+            for row in range(rows):
+                for col in range(cols):
+                    rect = pygame.Rect(col * frame_w, row * frame_h, frame_w, frame_h)
+                    cast_frames.append(sheet.subsurface(rect).copy())
+
+        if cast_frames:
+            idle_image = cast_frames[0].copy()
+
+        return idle_image, cast_frames
+
+    def _current_player_image(self) -> pygame.Surface | None:
+        if self.player_cast_timer > 0.0 and self.player_cast_frames:
+            elapsed = self.player_cast_total_time - self.player_cast_timer
+            frame_index = min(len(self.player_cast_frames) - 1, int(elapsed / self.player_cast_frame_time))
+            return self.player_cast_frames[frame_index]
+        return self.player_idle_image
+
+    def _start_player_cast_animation(self) -> None:
+        if self.player_cast_frames:
+            self.player_cast_timer = self.player_cast_total_time
 
     @property
     def active_field(self) -> BattleField:
@@ -185,6 +233,8 @@ class BattleScene:
                 fields=self.fields,
                 origin_pos=self.active_field.player_pos,
             )
+            if "Lv." in self.message:
+                self._start_player_cast_animation()
             self.message_timer = 1.4
             self.current_combo.clear()
 
@@ -259,6 +309,8 @@ class BattleScene:
         self.next_scene = "result"
 
     def update(self, dt: float) -> None:
+        self.player_cast_timer = max(0.0, self.player_cast_timer - dt)
+
         if self.unlock_scene.pending:
             self.unlock_scene.update(dt, self.magic)
             self.message_timer = max(0.0, self.message_timer - dt)
@@ -288,7 +340,8 @@ class BattleScene:
         self.message_timer = max(0.0, self.message_timer - dt)
 
     def draw(self, surface: pygame.Surface) -> None:
-        self.active_field.draw(surface, active=True)
+        player_image = self._current_player_image()
+        self.active_field.draw(surface, active=True, player_image=player_image)
         self._draw_inactive_field_minimap(surface)
         self.crosshair.draw(surface, self.aim_pos)
         self.hud.draw(
@@ -320,7 +373,7 @@ class BattleScene:
 
         # 반대편 전장을 임시 서페이스에 그대로 렌더링
         temp_surface = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
-        inactive.draw(temp_surface, active=False)
+        inactive.draw(temp_surface, active=False, player_image=self._current_player_image())
 
         # 렌더링된 전장을 미니맵 크기로 축소
         minimap_surface = pygame.transform.smoothscale(temp_surface, (mini_w, mini_h))

@@ -11,6 +11,7 @@ import numpy as np
 
 HandLabel = Literal["Left", "Right"]
 StackGesture = Literal["rock", "paper", "scissors"]
+SpecialGesture = Literal["clasp", "sonaldo"]
 
 THUMB = 0
 INDEX = 1
@@ -35,6 +36,11 @@ DEFAULT_PINCH_CLOSE_DELTA = 0.12
 DEFAULT_FIRE_COOLDOWN_SECONDS = 0.30
 DEFAULT_AIM_HISTORY_SECONDS = 0.45
 DEFAULT_PRE_FIRE_SECONDS = 0.12
+DEFAULT_SPECIAL_COOLDOWN_SECONDS = 0.80
+DEFAULT_CLASP_DISTANCE_THRESHOLD = 0.95
+DEFAULT_CLASP_CENTER_DISTANCE_THRESHOLD = 1.35
+DEFAULT_SONALDO_DISTANCE_THRESHOLD = 0.95
+DEFAULT_SONALDO_MIN_PINCH_DISTANCE = 0.55
 
 
 @dataclass(frozen=True)
@@ -99,6 +105,21 @@ class FireUpdate:
     pinch_distance: float
     pinch_velocity: float
     armed: bool
+
+
+@dataclass(frozen=True)
+class SpecialUpdate:
+    """양손 특수 제스처 안정화 결과.
+
+    Attributes:
+        candidate: 이번 프레임 후보 특수 제스처.
+        stable: 안정화된 특수 제스처.
+        emitted: 이번 프레임에 발생한 특수 제스처 이벤트.
+    """
+
+    candidate: SpecialGesture | None
+    stable: SpecialGesture | None
+    emitted: SpecialGesture | None
 
 
 def compute_finger_states(landmarks: np.ndarray) -> np.ndarray:
@@ -210,6 +231,29 @@ def normalized_pinch_distance(landmarks: np.ndarray) -> float:
     return pinch / hand_scale
 
 
+def classify_special_gesture(
+    left_landmarks: np.ndarray,
+    right_landmarks: np.ndarray,
+) -> SpecialGesture | None:
+    """양손 특수 제스처 후보를 기하학 규칙으로 판정한다.
+
+    Args:
+        left_landmarks: 왼손 ``(21, 3)`` 원시 랜드마크 좌표.
+        right_landmarks: 오른손 ``(21, 3)`` 원시 랜드마크 좌표.
+
+    Returns:
+        ``"clasp"``, ``"sonaldo"`` 또는 ``None``.
+    """
+    left_states = compute_finger_states(left_landmarks)
+    right_states = compute_finger_states(right_landmarks)
+
+    if _is_sonaldo(left_landmarks, right_landmarks, left_states, right_states):
+        return "sonaldo"
+    if _is_clasp(left_landmarks, right_landmarks, left_states, right_states):
+        return "clasp"
+    return None
+
+
 def assign_hands(
     observations: list[HandObservation],
 ) -> tuple[HandObservation | None, HandObservation | None]:
@@ -233,6 +277,91 @@ def assign_hands(
             right = observation
 
     return left, right
+
+
+def _hand_scale(landmarks: np.ndarray) -> float:
+    scale = float(np.linalg.norm(landmarks[WRIST] - landmarks[MIDDLE_MCP]))
+    return max(scale, 1e-6)
+
+
+def _pair_distance(
+    left_landmarks: np.ndarray,
+    right_landmarks: np.ndarray,
+    landmark_ids: tuple[int, ...],
+) -> float:
+    distances = [
+        float(np.linalg.norm(left_landmarks[index] - right_landmarks[index]))
+        for index in landmark_ids
+    ]
+    return sum(distances) / max(float(len(distances)), 1.0)
+
+
+def _normalized_pair_distance(
+    left_landmarks: np.ndarray,
+    right_landmarks: np.ndarray,
+    landmark_ids: tuple[int, ...],
+) -> float:
+    scale = (_hand_scale(left_landmarks) + _hand_scale(right_landmarks)) * 0.5
+    return _pair_distance(left_landmarks, right_landmarks, landmark_ids) / scale
+
+
+def _hand_center(landmarks: np.ndarray) -> np.ndarray:
+    return landmarks[[WRIST, MIDDLE_MCP]].mean(axis=0)
+
+
+def _hands_center_distance(
+    left_landmarks: np.ndarray,
+    right_landmarks: np.ndarray,
+) -> float:
+    scale = (_hand_scale(left_landmarks) + _hand_scale(right_landmarks)) * 0.5
+    return float(
+        np.linalg.norm(_hand_center(left_landmarks) - _hand_center(right_landmarks))
+        / scale
+    )
+
+
+def _is_clasp(
+    left_landmarks: np.ndarray,
+    right_landmarks: np.ndarray,
+    left_states: np.ndarray,
+    right_states: np.ndarray,
+) -> bool:
+    open_left = classify_stack_gesture(left_states) == "paper"
+    open_right = classify_stack_gesture(right_states) == "paper"
+    if not open_left or not open_right:
+        return False
+
+    fingertip_distance = _normalized_pair_distance(
+        left_landmarks,
+        right_landmarks,
+        (INDEX_TIP, MIDDLE_TIP, 16, 20),
+    )
+    center_distance = _hands_center_distance(left_landmarks, right_landmarks)
+    return bool(
+        fingertip_distance <= DEFAULT_CLASP_DISTANCE_THRESHOLD
+        and center_distance <= DEFAULT_CLASP_CENTER_DISTANCE_THRESHOLD
+    )
+
+
+def _is_sonaldo(
+    left_landmarks: np.ndarray,
+    right_landmarks: np.ndarray,
+    left_states: np.ndarray,
+    right_states: np.ndarray,
+) -> bool:
+    if not is_aim_pose(left_states) or not is_aim_pose(right_states):
+        return False
+    if normalized_pinch_distance(left_landmarks) < DEFAULT_SONALDO_MIN_PINCH_DISTANCE:
+        return False
+    if normalized_pinch_distance(right_landmarks) < DEFAULT_SONALDO_MIN_PINCH_DISTANCE:
+        return False
+
+    fingertip_distance = _normalized_pair_distance(
+        left_landmarks,
+        right_landmarks,
+        (THUMB_TIP, INDEX_TIP),
+    )
+    return fingertip_distance <= DEFAULT_SONALDO_DISTANCE_THRESHOLD
 
 
 class BoolDebouncer:
@@ -360,6 +489,89 @@ class StackGestureDebouncer:
         self._last_emitted_at = None
 
     def _can_emit(self, candidate: StackGesture, timestamp: float) -> bool:
+        if candidate == self._last_emitted:
+            return False
+        if self._last_emitted_at is None:
+            return True
+        return timestamp - self._last_emitted_at >= self._cooldown_seconds
+
+
+class SpecialGestureDebouncer:
+    """양손 특수 제스처를 안정화하고 1회 이벤트로 변환한다."""
+
+    def __init__(
+        self,
+        stable_seconds: float = DEFAULT_MODE_STABLE_SECONDS,
+        grace_seconds: float = DEFAULT_MODE_GRACE_SECONDS,
+        cooldown_seconds: float = DEFAULT_SPECIAL_COOLDOWN_SECONDS,
+    ) -> None:
+        self._stable_seconds = stable_seconds
+        self._grace_seconds = grace_seconds
+        self._cooldown_seconds = cooldown_seconds
+
+        self._candidate: SpecialGesture | None = None
+        self._candidate_started_at: float | None = None
+        self._last_seen_at: float | None = None
+        self._stable: SpecialGesture | None = None
+        self._last_emitted: SpecialGesture | None = None
+        self._last_emitted_at: float | None = None
+
+    def update(
+        self,
+        candidate: SpecialGesture | None,
+        timestamp: float | None = None,
+    ) -> SpecialUpdate:
+        """특수 제스처 후보를 갱신한다.
+
+        Args:
+            candidate: 이번 프레임 후보 특수 제스처.
+            timestamp: 현재 시간. ``None``이면 자동 측정.
+
+        Returns:
+            안정화/이벤트 결과.
+        """
+        if timestamp is None:
+            timestamp = time.time()
+
+        if candidate is None:
+            self._candidate = None
+            self._candidate_started_at = None
+            if self._last_seen_at is None:
+                self._stable = None
+            elif timestamp - self._last_seen_at > self._grace_seconds:
+                self._stable = None
+                self._last_emitted = None
+            return SpecialUpdate(candidate, self._stable, None)
+
+        self._last_seen_at = timestamp
+        if candidate != self._candidate:
+            self._candidate = candidate
+            self._candidate_started_at = timestamp
+            return SpecialUpdate(candidate, self._stable, None)
+
+        if self._candidate_started_at is None:
+            self._candidate_started_at = timestamp
+
+        emitted = None
+        if timestamp - self._candidate_started_at >= self._stable_seconds:
+            self._stable = candidate
+            if self._can_emit(candidate, timestamp):
+                emitted = candidate
+                self._last_emitted = candidate
+                self._last_emitted_at = timestamp
+
+        return SpecialUpdate(candidate, self._stable, emitted)
+
+    def reset(self) -> None:
+        """내부 상태를 초기화한다."""
+        self._candidate = None
+        self._candidate_started_at = None
+        self._last_seen_at = None
+        self._stable = None
+        self._last_emitted = None
+        self._last_emitted_at = None
+
+    def _can_emit(self, candidate: SpecialGesture, timestamp: float) -> bool:
         if candidate == self._last_emitted:
             return False
         if self._last_emitted_at is None:

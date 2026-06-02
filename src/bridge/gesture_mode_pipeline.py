@@ -20,8 +20,11 @@ from src.ai.gesture_modes import (
     FireUpdate,
     HandObservation,
     PinchFireDetector,
+    SpecialGesture,
+    SpecialGestureDebouncer,
     StackGestureDebouncer,
     assign_hands,
+    classify_special_gesture,
     classify_stack_gesture,
     compute_finger_states,
     is_aim_pose,
@@ -102,6 +105,10 @@ class GestureModePipeline:
             stable_seconds=self._config.mode_stable_seconds,
             grace_seconds=self._config.mode_grace_seconds,
         )
+        self._special_gesture = SpecialGestureDebouncer(
+            stable_seconds=self._config.mode_stable_seconds,
+            grace_seconds=self._config.mode_grace_seconds,
+        )
         self._aim_tracker = EmaAimTracker(
             game_width=self._config.frame_width,
             game_height=self._config.frame_height,
@@ -148,6 +155,25 @@ class GestureModePipeline:
 
         left, right = assign_hands(observations)
         events: list[GestureEvent] = []
+
+        special_candidate = self._special_candidate(left, right)
+        special_update = self._special_gesture.update(
+            special_candidate,
+            timestamp=timestamp,
+        )
+        self._two_hand_active = self._two_hand_gate.update(
+            left is not None and right is not None,
+            timestamp=timestamp,
+        )
+
+        if special_update.emitted is not None:
+            events.append(
+                self._build_special_event(special_update.emitted, left, right)
+            )
+            return events
+
+        if special_candidate is not None or special_update.stable is not None:
+            return events
 
         stack_event = self._update_left_stack(left, timestamp)
         if stack_event is not None:
@@ -197,10 +223,6 @@ class GestureModePipeline:
         if fire_event is not None:
             events.append(fire_event)
 
-        self._two_hand_active = self._two_hand_gate.update(
-            left is not None and right is not None,
-            timestamp=timestamp,
-        )
         return events
 
     def reset(self) -> None:
@@ -208,10 +230,40 @@ class GestureModePipeline:
         self._left_stack.reset()
         self._aim_mode.reset()
         self._two_hand_gate.reset()
+        self._special_gesture.reset()
         self._aim_tracker.reset()
         self._fire_detector.reset()
         self._last_aim = None
         self._two_hand_active = False
+
+    def _special_candidate(
+        self,
+        left: HandObservation | None,
+        right: HandObservation | None,
+    ) -> SpecialGesture | None:
+        if left is None or right is None:
+            return None
+        return classify_special_gesture(left.landmarks, right.landmarks)
+
+    def _build_special_event(
+        self,
+        gesture: SpecialGesture,
+        left: HandObservation | None,
+        right: HandObservation | None,
+    ) -> GestureEvent:
+        confidence = 0.0
+        if left is not None and right is not None:
+            confidence = min(left.score, right.score)
+        aim_x, aim_y = self._last_normalized_aim()
+        return GestureEvent(
+            gesture=gesture,
+            confidence=confidence,
+            aim_x=aim_x,
+            aim_y=aim_y,
+            kind="special",
+            channel="both",
+            active=True,
+        )
 
     def _update_left_stack(
         self,

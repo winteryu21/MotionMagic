@@ -9,9 +9,11 @@ from src.ai.gesture_modes import (
     AimModeTracker,
     HandObservation,
     PinchFireDetector,
+    SpecialGestureDebouncer,
     StackGestureDebouncer,
     aim_point,
     assign_hands,
+    classify_special_gesture,
     classify_stack_gesture,
     compute_finger_states,
     is_aim_pose,
@@ -65,6 +67,12 @@ def _aim_landmarks(pinch_distance: float = 1.0) -> np.ndarray:
     landmarks[4] = [0.20 + pinch_distance * 0.30, -0.70, 0.0]
     landmarks[8] = [0.20, -0.70, 0.0]
     return landmarks
+
+
+def _shifted(landmarks: np.ndarray, dx: float) -> np.ndarray:
+    shifted = landmarks.copy()
+    shifted[:, 0] += dx
+    return shifted
 
 
 def test_classifies_left_stack_gestures() -> None:
@@ -123,6 +131,40 @@ def test_assign_hands_keeps_best_left_and_right() -> None:
 
     assert left is left_high
     assert assigned_right is right
+
+
+def test_classifies_clasp_when_open_hands_are_close() -> None:
+    """합장은 두 열린 손의 손끝들이 가까운 양손 제스처다."""
+    left = _shifted(_base_landmarks(), -0.08)
+    right = _shifted(_base_landmarks(), 0.08)
+
+    assert classify_special_gesture(left, right) == "clasp"
+
+
+def test_rejects_clasp_when_hands_are_far_apart() -> None:
+    """열린 손이라도 거리가 멀면 합장으로 보지 않는다."""
+    left = _shifted(_base_landmarks(), -1.00)
+    right = _shifted(_base_landmarks(), 1.00)
+
+    assert classify_special_gesture(left, right) is None
+
+
+def test_classifies_sonaldo_from_two_open_aim_poses() -> None:
+    """손흥민 시그니처는 양손 엄지/검지가 열린 조준형 포즈다."""
+    left = _shifted(_aim_landmarks(pinch_distance=1.0), -0.08)
+    right = _shifted(_aim_landmarks(pinch_distance=1.0), 0.08)
+
+    assert classify_special_gesture(left, right) == "sonaldo"
+
+
+def test_special_debouncer_emits_once_after_stable_delay() -> None:
+    """양손 특수 제스처는 안정화 후 1회만 emit된다."""
+    debouncer = SpecialGestureDebouncer(stable_seconds=0.10, cooldown_seconds=0.30)
+
+    assert debouncer.update("clasp", timestamp=0.00).emitted is None
+    assert debouncer.update("clasp", timestamp=0.05).emitted is None
+    assert debouncer.update("clasp", timestamp=0.11).emitted == "clasp"
+    assert debouncer.update("clasp", timestamp=0.20).emitted is None
 
 
 def test_stack_debouncer_emits_once_after_stable_delay() -> None:

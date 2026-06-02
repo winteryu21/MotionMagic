@@ -54,6 +54,12 @@ def _aim_landmarks(closed: bool = False) -> np.ndarray:
     return landmarks
 
 
+def _shifted(landmarks: np.ndarray, dx: float) -> np.ndarray:
+    shifted = landmarks.copy()
+    shifted[:, 0] += dx
+    return shifted
+
+
 def _pipeline() -> GestureModePipeline:
     """테스트용 즉시 안정화 파이프라인을 생성한다."""
     return GestureModePipeline(
@@ -171,7 +177,7 @@ def test_pipeline_emits_fire_event_from_previous_aim_position() -> None:
 
 
 def test_pipeline_tracks_two_hand_gate_without_emitting_special_event() -> None:
-    """양손 채널은 gate로만 추적하고 특수 제스처 이벤트는 아직 내보내지 않는다."""
+    """양손이 있어도 특수 후보가 아니면 special 이벤트를 내보내지 않는다."""
     pipeline = _pipeline()
     left = HandObservation("Left", _rock_landmarks(), score=0.9)
     right = HandObservation("Right", _aim_landmarks(), score=0.8)
@@ -180,3 +186,34 @@ def test_pipeline_tracks_two_hand_gate_without_emitting_special_event() -> None:
 
     assert pipeline.two_hand_active
     assert all(event.kind != "special" for event in events)
+
+
+def test_pipeline_emits_clasp_special_and_suppresses_stack() -> None:
+    """합장 특수 모드는 왼손 paper 스택으로 새지 않는다."""
+    pipeline = _pipeline()
+    left = HandObservation("Left", _shifted(_base_landmarks(), -0.03), score=0.9)
+    right = HandObservation("Right", _shifted(_base_landmarks(), 0.03), score=0.8)
+
+    assert pipeline.update([left, right], timestamp=0.00) == []
+    events = pipeline.update([left, right], timestamp=0.01)
+
+    assert pipeline.two_hand_active
+    assert len(events) == 1
+    assert events[0].gesture == "clasp"
+    assert events[0].kind == "special"
+    assert events[0].channel == "both"
+
+
+def test_pipeline_emits_sonaldo_special_and_suppresses_aim() -> None:
+    """손흥민 시그니처 특수 모드는 오른손 aim 이벤트로 새지 않는다."""
+    pipeline = _pipeline()
+    left = HandObservation("Left", _shifted(_aim_landmarks(), -0.03), score=0.9)
+    right = HandObservation("Right", _shifted(_aim_landmarks(), 0.03), score=0.8)
+
+    assert pipeline.update([left, right], timestamp=0.00) == []
+    events = pipeline.update([left, right], timestamp=0.01)
+
+    assert len(events) == 1
+    assert events[0].gesture == "sonaldo"
+    assert events[0].kind == "special"
+    assert events[0].channel == "both"

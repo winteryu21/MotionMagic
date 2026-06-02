@@ -50,8 +50,10 @@ from src.ai.gesture_modes import (
     HandLabel,
     HandObservation,
     PinchFireDetector,
+    SpecialGestureDebouncer,
     StackGestureDebouncer,
     assign_hands,
+    classify_special_gesture,
     classify_stack_gesture,
     compute_finger_states,
     is_aim_pose,
@@ -279,6 +281,7 @@ def _draw_status(
     right_text: str,
     fire_update: FireUpdate | None,
     special_active: bool,
+    special_text: str,
     shot_count: int,
     fps: float,
     pinch_closed_threshold: float,
@@ -295,6 +298,7 @@ def _draw_status(
         right_text: 오른손 상태 문자열.
         fire_update: 최근 발사 상태.
         special_active: 양손 채널 안정화 여부.
+        special_text: 양손 특수 후보/안정화 상태 문자열.
         shot_count: 누적 발사 수.
         fps: 평균 FPS.
         pinch_closed_threshold: 발사로 볼 엄지-검지 닫힘 거리.
@@ -312,7 +316,8 @@ def _draw_status(
         pinch_state = "ready"
     elif not has_right_hand:
         pinch_state = "no-right"
-    special_text = "ON" if special_active else "OFF"
+    special_gate_text = "ON" if special_active else "OFF"
+    special_display = f"{special_gate_text} {special_text}"
     special_color = SPECIAL_MODE_COLOR if special_active else (130, 130, 130)
 
     lines = [
@@ -327,7 +332,7 @@ def _draw_status(
             ),
             (230, 230, 230),
         ),
-        ("Two-hand gate", special_text, special_color),
+        ("Two-hand", special_display, special_color),
         ("Fire aim", f"-{pre_fire_seconds:.2f}s history", (230, 230, 230)),
         ("Shots/FPS", f"{shot_count} / {fps:.0f}", (230, 230, 230)),
         ("Keys", "q/ESC quit, r reset", (180, 180, 180)),
@@ -352,7 +357,7 @@ def _draw_status(
             cv2.FONT_HERSHEY_SIMPLEX,
             0.60,
             color,
-            2 if label in {"Left stack", "Right aim", "Two-hand gate"} else 1,
+            2 if label in {"Left stack", "Right aim", "Two-hand"} else 1,
         )
         y += 30
 
@@ -420,6 +425,7 @@ def run_test(
     left_stack = StackGestureDebouncer()
     aim_mode = AimModeTracker()
     two_hand_gate = BoolDebouncer()
+    special_debouncer = SpecialGestureDebouncer()
     aim_tracker = EmaAimTracker(
         game_width=CAMERA_WIDTH,
         game_height=CAMERA_HEIGHT,
@@ -510,6 +516,7 @@ def run_test(
             left_candidate = None
             right_candidate = False
             fire_update: FireUpdate | None = None
+            special_candidate = None
 
             if not right_only and left is not None:
                 left_states = compute_finger_states(left.landmarks)
@@ -596,6 +603,17 @@ def run_test(
                 left is not None and right is not None,
                 timestamp=frame_started_at,
             )
+            if left is not None and right is not None:
+                special_candidate = classify_special_gesture(
+                    left.landmarks,
+                    right.landmarks,
+                )
+            special_update = special_debouncer.update(
+                special_candidate,
+                timestamp=frame_started_at,
+            )
+            if special_update.emitted is not None:
+                print(f"SPECIAL: {special_update.emitted}")
 
             now = time.time()
             elapsed = now - frame_started_at
@@ -623,6 +641,10 @@ def run_test(
                 right_text=right_text,
                 fire_update=fire_update,
                 special_active=special_active,
+                special_text=(
+                    f"cand={special_candidate or '-'} "
+                    f"stable={special_update.stable or '-'}"
+                ),
                 shot_count=shot_count,
                 fps=avg_fps,
                 pinch_closed_threshold=pinch_closed_threshold,
@@ -640,6 +662,7 @@ def run_test(
                 left_stack.reset()
                 aim_mode.reset()
                 two_hand_gate.reset()
+                special_debouncer.reset()
                 aim_tracker.reset()
                 fire_detector.reset()
                 stack.clear()

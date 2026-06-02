@@ -8,7 +8,7 @@ import pygame
 
 from src.game.entities.enemy import Enemy
 from src.game.entities.player import Player
-from src.game.entities.projectile import Explosion, LightningStrike, MagicMissile
+from src.game.entities.projectile import Explosion, LightningStrike, MagicMissile, Meteor
 from src.game.settings import (
     BASE_LINE_X,
     BATTLE_BACKGROUND_FILES,
@@ -43,7 +43,7 @@ class BattleField:
     background: pygame.Surface | None = None
     enemies: list[Enemy] = field(default_factory=list)
     projectiles: list[MagicMissile] = field(default_factory=list)
-    effects: list[Explosion | LightningStrike] = field(default_factory=list)
+    effects: list[Explosion | LightningStrike | Meteor] = field(default_factory=list)
     @property
     def remaining_enemies(self) -> int:
         return sum(1 for enemy in self.enemies if enemy.alive)
@@ -182,6 +182,7 @@ class BattleScene:
                 self.player,
                 self.active_field,
                 self.aim_pos,
+                fields=self.fields,
                 origin_pos=self.active_field.player_pos,
             )
             self.message_timer = 1.4

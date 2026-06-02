@@ -12,7 +12,20 @@ import math
 import pygame
 
 from src.game.entities.enemy import Enemy, StatusEffect
-from src.game.settings import COLOR_EXPLOSION, COLOR_LIGHTNING, COLOR_PROJECTILE, SCREEN_HEIGHT, SCREEN_WIDTH
+from src.game.settings import (
+    COLOR_EXPLOSION,
+    COLOR_LIGHTNING,
+    COLOR_METEOR,
+    COLOR_METEOR_CORE,
+    COLOR_PROJECTILE,
+    METEOR_EXPLOSION_DURATION,
+    METEOR_FALL_SPEED,
+    METEOR_RADIUS,
+    METEOR_START_Y,
+    METEOR_TRAIL_LENGTH,
+    SCREEN_HEIGHT,
+    SCREEN_WIDTH,
+)
 
 
 @dataclass(slots=True)
@@ -196,6 +209,67 @@ class Explosion:
         t = min(1.0, self.age / self.duration)
         r = max(6, int(self.radius * (0.25 + 0.75 * t)))
         pygame.draw.circle(surface, self.color, (int(self.x), int(self.y)), r, 3)
+
+
+@dataclass(slots=True)
+class Meteor:
+    """Fall toward the ground and explode on impact."""
+
+    x: float
+    target_x: float
+    target_y: float
+    damage: float
+    explosion_radius: float
+    y: float = METEOR_START_Y
+    fall_speed: float = METEOR_FALL_SPEED
+    radius: int = METEOR_RADIUS
+    explosion: Explosion | None = None
+    alive: bool = True
+
+    def update(self, dt: float, enemies: list[Enemy]) -> None:
+        """Advance the falling meteor or its impact explosion."""
+        if self.explosion is not None:
+            self.explosion.update(dt, enemies)
+            self.alive = self.explosion.alive
+            return
+
+        dx = self.target_x - self.x
+        dy = self.target_y - self.y
+        distance = math.hypot(dx, dy)
+        step = self.fall_speed * dt
+        if step < distance:
+            self.x += dx / distance * step
+            self.y += dy / distance * step
+            return
+
+        self.x = self.target_x
+        self.y = self.target_y
+        self.explosion = Explosion(
+            x=self.x,
+            y=self.target_y,
+            damage=self.damage,
+            radius=self.explosion_radius,
+            duration=METEOR_EXPLOSION_DURATION,
+        )
+        self.explosion.update(0.0, enemies)
+
+    def draw(self, surface: pygame.Surface) -> None:
+        """Draw the falling meteor or its impact explosion."""
+        if self.explosion is not None:
+            self.explosion.draw(surface)
+            return
+
+        center = (int(self.x), int(self.y))
+        dx = self.target_x - self.x
+        dy = self.target_y - self.y
+        distance = max(1.0, math.hypot(dx, dy))
+        trail_end = (
+            center[0] - int(dx / distance * METEOR_TRAIL_LENGTH),
+            center[1] - int(dy / distance * METEOR_TRAIL_LENGTH),
+        )
+        pygame.draw.line(surface, COLOR_METEOR, trail_end, center, self.radius)
+        pygame.draw.circle(surface, COLOR_METEOR, center, self.radius)
+        pygame.draw.circle(surface, COLOR_METEOR_CORE, center, max(4, self.radius // 2))
 
 
 @dataclass(slots=True)

@@ -4,12 +4,27 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import math
+import random
 import time
 
 from src.game.entities.enemy import StatusEffect
 from src.game.entities.player import Player
-from src.game.entities.projectile import Explosion, Fireball, LightningStrike, MagicMissile, PiercingBullet
-from src.game.settings import COLOR_LIGHTNING, GESTURE_PAPER, GESTURE_ROCK, GESTURE_SCISSORS, PLAYER_X, PLAYER_Y
+from src.game.entities.projectile import Explosion, Fireball, LightningStrike, MagicMissile, Meteor, PiercingBullet
+from src.game.settings import (
+    COLOR_LIGHTNING,
+    GESTURE_PAPER,
+    GESTURE_ROCK,
+    GESTURE_SCISSORS,
+    METEOR_COUNT_PER_FIELD,
+    METEOR_START_X_OFFSET,
+    METEOR_START_Y,
+    METEOR_TARGET_MARGIN_X,
+    METEOR_TARGET_MARGIN_Y,
+    PLAYER_X,
+    PLAYER_Y,
+    SCREEN_HEIGHT,
+    SCREEN_WIDTH,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -171,12 +186,20 @@ class MagicSystem:
         field,
         aim_pos: tuple[int, int],
         *,
+        fields: list | None = None,
         origin_pos: tuple[int, int] | None = None,
     ) -> str:
         spell = self.spell_for_combo(combo)
         if spell is None:
             return "조합 없음"
-        return self.cast(spell, player, field, aim_pos, origin_pos=origin_pos)
+        return self.cast(
+            spell,
+            player,
+            field,
+            aim_pos,
+            fields=fields,
+            origin_pos=origin_pos,
+        )
 
     def cast(
         self,
@@ -187,6 +210,7 @@ class MagicSystem:
         *,
         ignore_requirements: bool = False,
         consume_resources: bool = True,
+        fields: list | None = None,
         origin_pos: tuple[int, int] | None = None,
     ) -> str:
         now = time.monotonic()
@@ -283,8 +307,27 @@ class MagicSystem:
             return f"{spell.name} Lv.{spell.level}"
 
         if spell.key == "meteor":
-            # 메테오는 거대한 폭발을 긴 시간 동안 발생시킴
-            field.effects.append(Explosion(aim_pos[0], aim_pos[1], stat.damage, stat.radius, duration=0.8))
+            target_fields = fields if fields is not None else [field]
+            for target_field in target_fields:
+                for _ in range(METEOR_COUNT_PER_FIELD):
+                    target_x = random.randint(
+                        METEOR_TARGET_MARGIN_X,
+                        SCREEN_WIDTH - METEOR_TARGET_MARGIN_X,
+                    )
+                    target_y = random.randint(
+                        METEOR_TARGET_MARGIN_Y,
+                        SCREEN_HEIGHT - METEOR_TARGET_MARGIN_Y,
+                    )
+                    target_field.effects.append(
+                        Meteor(
+                            x=target_x + METEOR_START_X_OFFSET,
+                            y=METEOR_START_Y,
+                            target_x=target_x,
+                            target_y=target_y,
+                            damage=stat.damage,
+                            explosion_radius=stat.radius,
+                        )
+                    )
             return f"{spell.name} Lv.{spell.level}"
 
         return "미구현 마법"

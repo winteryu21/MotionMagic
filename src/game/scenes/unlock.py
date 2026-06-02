@@ -7,7 +7,7 @@ import pygame
 
 from src.game.entities.enemy import Enemy
 from src.game.entities.player import Player
-from src.game.entities.projectile import Explosion, LightningStrike, MagicMissile
+from src.game.entities.projectile import Explosion, LightningStrike, MagicMissile, Meteor
 from src.game.settings import SCREEN_WIDTH
 from src.game.systems.magic import MagicSystem, Spell
 
@@ -16,7 +16,7 @@ from src.game.systems.magic import MagicSystem, Spell
 class UnlockDemoField:
     enemies: list[Enemy] = field(default_factory=list)
     projectiles: list[MagicMissile] = field(default_factory=list)
-    effects: list[Explosion | LightningStrike] = field(default_factory=list)
+    effects: list[Explosion | LightningStrike | Meteor] = field(default_factory=list)
 
 
 class UnlockScene:

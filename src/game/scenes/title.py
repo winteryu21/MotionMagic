@@ -7,13 +7,14 @@ import pygame
 from src.bridge.gesture_event import GestureEvent
 from src.game.gesture_input import screen_pos_from_gesture_event
 from src.game.settings import COLOR_MUTED, COLOR_WHITE, SCREEN_HEIGHT, SCREEN_WIDTH
+from src.game.ui.crosshair import Crosshair
 from src.game.ui.fonts import get_font
 
 
 class TitleScene:
     """게임 시작 전 타이틀 화면."""
 
-    mouse_visible = True
+    mouse_visible = False
 
     def __init__(self) -> None:
         self.next_scene: str | None = None
@@ -26,6 +27,8 @@ class TitleScene:
             260,
             70,
         )
+        self.aim_pos = (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
+        self.crosshair = Crosshair()
 
     def handle_event(self, event: pygame.event.Event) -> None:
         if event.type == pygame.KEYDOWN and event.key in (
@@ -33,19 +36,27 @@ class TitleScene:
             pygame.K_SPACE,
         ):
             self.next_scene = "explain"
+        elif event.type == pygame.MOUSEMOTION:
+            self.aim_pos = event.pos
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            if self.start_button.collidepoint(event.pos):
-                self.next_scene = "explain"
+            self.aim_pos = event.pos
+            self._select_at(self.aim_pos)
 
     def handle_gesture_event(self, event: GestureEvent) -> None:
-        """오른손 제스처 커서로 시작 버튼을 선택한다.
+        """오른손 조준점으로 시작 버튼을 선택한다.
 
         Args:
             event: bridge 계층에서 전달된 제스처 이벤트.
         """
-        if event.kind == "fire" and self.start_button.collidepoint(
-            screen_pos_from_gesture_event(event)
-        ):
+        if event.kind not in {"aim", "fire"}:
+            return
+
+        self.aim_pos = screen_pos_from_gesture_event(event)
+        if event.kind == "fire":
+            self._select_at(self.aim_pos)
+
+    def _select_at(self, pos: tuple[int, int]) -> None:
+        if self.start_button.collidepoint(pos):
             self.next_scene = "explain"
 
     def update(self, dt: float) -> None:
@@ -68,3 +79,4 @@ class TitleScene:
             guide,
             guide.get_rect(center=(SCREEN_WIDTH // 2, self.start_button.bottom + 38)),
         )
+        self.crosshair.draw(surface, self.aim_pos)

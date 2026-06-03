@@ -11,7 +11,6 @@ import pygame
 
 from src.bridge.camera_thread import CameraThread
 from src.bridge.gesture_event import GestureEvent
-from src.game.gesture_input import screen_pos_from_gesture_event
 from src.game.scenes.battle import BattleScene
 from src.game.scenes.explain import ExplainScene
 from src.game.scenes.result import ResultScene
@@ -137,9 +136,6 @@ class App:
                 event = self.gesture_events.get_nowait()
             except Empty:
                 return
-
-            if event.kind in {"aim", "fire"}:
-                pygame.mouse.set_pos(screen_pos_from_gesture_event(event))
 
             if handler is not None:
                 handler(event)

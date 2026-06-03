@@ -7,13 +7,14 @@ import pygame
 from src.bridge.gesture_event import GestureEvent
 from src.game.gesture_input import screen_pos_from_gesture_event
 from src.game.settings import COLOR_MUTED, COLOR_WHITE, SCREEN_HEIGHT, SCREEN_WIDTH
+from src.game.ui.crosshair import Crosshair
 from src.game.ui.fonts import get_font
 
 
 class ExplainScene:
     """전투 시작 전 조작법을 간단히 안내하는 씬."""
 
-    mouse_visible = True
+    mouse_visible = False
 
     def __init__(self) -> None:
         self.next_scene: str | None = None
@@ -26,6 +27,8 @@ class ExplainScene:
             270,
             62,
         )
+        self.aim_pos = (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
+        self.crosshair = Crosshair()
         self.lines = [
             "Q / W / E : 가위 / 바위 / 보 제스처 입력",
             "마우스 이동 : 조준점 이동",
@@ -42,19 +45,27 @@ class ExplainScene:
             pygame.K_SPACE,
         ):
             self.next_scene = "battle"
+        elif event.type == pygame.MOUSEMOTION:
+            self.aim_pos = event.pos
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            if self.start_button.collidepoint(event.pos):
-                self.next_scene = "battle"
+            self.aim_pos = event.pos
+            self._select_at(self.aim_pos)
 
     def handle_gesture_event(self, event: GestureEvent) -> None:
-        """오른손 제스처 커서로 전투 시작 버튼을 선택한다.
+        """오른손 조준점으로 전투 시작 버튼을 선택한다.
 
         Args:
             event: bridge 계층에서 전달된 제스처 이벤트.
         """
-        if event.kind == "fire" and self.start_button.collidepoint(
-            screen_pos_from_gesture_event(event)
-        ):
+        if event.kind not in {"aim", "fire"}:
+            return
+
+        self.aim_pos = screen_pos_from_gesture_event(event)
+        if event.kind == "fire":
+            self._select_at(self.aim_pos)
+
+    def _select_at(self, pos: tuple[int, int]) -> None:
+        if self.start_button.collidepoint(pos):
             self.next_scene = "battle"
 
     def update(self, dt: float) -> None:
@@ -86,3 +97,4 @@ class ExplainScene:
             guide,
             guide.get_rect(center=(SCREEN_WIDTH // 2, self.start_button.bottom + 30)),
         )
+        self.crosshair.draw(surface, self.aim_pos)

@@ -318,7 +318,7 @@ class BattleScene:
             return
 
         pos = screen_pos_from_gesture_event(event)
-        pygame.mouse.set_pos(pos)
+        self.aim_pos = pos
         if event.kind != "fire":
             return
 
@@ -423,7 +423,6 @@ class BattleScene:
 
     def _open_reward_selection(self) -> None:
         self.reward_pending = True
-        pygame.mouse.set_visible(True)
         self.reward_options = self.reward_system.make_options(
             self.player, self.magic, 3
         )
@@ -448,18 +447,15 @@ class BattleScene:
                 self._open_unlock_scene(unlock_spell, next_stage)
                 return
 
-        pygame.mouse.set_visible(False)
         self.spawner.start_stage(next_stage)
 
     def _open_unlock_scene(self, spell, next_stage: int) -> None:
         self.unlock_scene.open(spell, next_stage)
-        pygame.mouse.set_visible(True)
         self.message = f"새 스킬 해금: {spell.name}"
         self.message_timer = 2.0
 
     def _close_unlock_scene(self) -> None:
         unlocked_name = self.unlock_scene.close(self.magic)
-        pygame.mouse.set_visible(False)
         self.spawner.start_stage(self.unlock_scene.next_stage)
         self.message = f"{unlocked_name} 해금! Stage {self.spawner.stage} 시작"
         self.message_timer = 1.5
@@ -522,7 +518,6 @@ class BattleScene:
         player_image = self._current_player_image(self.active_field_index)
         self.active_field.draw(surface, active=True, player_image=player_image)
         self._draw_inactive_field_minimap(surface)
-        self.crosshair.draw(surface, self.aim_pos)
         self.hud.draw(
             surface=surface,
             player=self.player,
@@ -542,6 +537,7 @@ class BattleScene:
                 self.unlock_scene.demo_time,
                 self.unlock_scene.demo_field,
             )
+        self.crosshair.draw(surface, self.aim_pos)
 
     def _draw_inactive_field_minimap(self, surface: pygame.Surface) -> None:
         mini_w, mini_h = 320, 180  # 16:9 비율 유지 (1920x1080 / 6)

@@ -80,10 +80,10 @@ class MagicSystem:
                 key="magic_missile",
                 name="매직 미사일",
                 combo=(GESTURE_SCISSORS,),
-                level_table={#20 26 34
-                    1: MagicLevelStat(cooldown=0.45, damage=1000, mana_cost=8, projectile_speed=480, pierce_count=1),
-                    2: MagicLevelStat(cooldown=0.38, damage=1000, mana_cost=9, projectile_speed=540, pierce_count=2),
-                    3: MagicLevelStat(cooldown=0.32, damage=1000, mana_cost=10, projectile_speed=600, pierce_count=3),
+                level_table={
+                    1: MagicLevelStat(cooldown=0.45, damage=20, mana_cost=8, projectile_speed=480, pierce_count=1),
+                    2: MagicLevelStat(cooldown=0.38, damage=26, mana_cost=9, projectile_speed=540, pierce_count=2),
+                    3: MagicLevelStat(cooldown=0.32, damage=34, mana_cost=10, projectile_speed=600, pierce_count=3),
                 },
             ),
             "fireball": Spell(

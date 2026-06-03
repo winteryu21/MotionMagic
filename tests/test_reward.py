@@ -28,3 +28,13 @@ def test_spell_descriptions_match_current_implementations() -> None:
     chain = magic.spells["chain_lightning"]
     chain_description = rewards._spell_description(chain, chain.stat)
     assert f"체인 {chain.stat.chain_count}회" in chain_description
+
+
+def test_chain_lightning_range_is_expanded_by_level() -> None:
+    """Chain lightning should use the expanded chain search radius."""
+    magic = MagicSystem()
+    chain = magic.spells["chain_lightning"]
+
+    assert chain.level_table[1].radius == 500
+    assert chain.level_table[2].radius == 560
+    assert chain.level_table[3].radius == 620

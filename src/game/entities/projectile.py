@@ -6,8 +6,8 @@ feature-game-proto의 마탄/화염구/체인 라이트닝 전투 로직만 리�
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import math
+from dataclasses import dataclass, field
 
 import pygame
 
@@ -44,16 +44,31 @@ class Projectile:
     @property
     def rect(self) -> pygame.Rect:
         size = self.radius * 2
-        return pygame.Rect(int(self.x - self.radius), int(self.y - self.radius), size, size)
+        return pygame.Rect(
+            int(self.x - self.radius),
+            int(self.y - self.radius),
+            size,
+            size,
+        )
 
     def update(self, dt: float) -> None:
         self.x += self.speed_x * dt
         self.y += self.speed_y * dt
-        if self.x < -40 or self.x > SCREEN_WIDTH + 40 or self.y < -40 or self.y > SCREEN_HEIGHT + 40:
+        if (
+            self.x < -40
+            or self.x > SCREEN_WIDTH + 40
+            or self.y < -40
+            or self.y > SCREEN_HEIGHT + 40
+        ):
             self.alive = False
 
     def draw(self, surface: pygame.Surface) -> None:
-        pygame.draw.circle(surface, COLOR_PROJECTILE, (int(self.x), int(self.y)), self.radius)
+        pygame.draw.circle(
+            surface,
+            COLOR_PROJECTILE,
+            (int(self.x), int(self.y)),
+            self.radius,
+        )
 
 
 @dataclass(slots=True)
@@ -86,8 +101,18 @@ class MagicMissile:
 
     def draw(self, surface: pygame.Surface) -> None:
         """Draw the missile."""
-        pygame.draw.circle(surface, (100, 180, 255), (int(self.x), int(self.y)), self.radius)
-        pygame.draw.circle(surface, (200, 230, 255), (int(self.x), int(self.y)), max(2, self.radius - 2))
+        pygame.draw.circle(
+            surface,
+            (100, 180, 255),
+            (int(self.x), int(self.y)),
+            self.radius,
+        )
+        pygame.draw.circle(
+            surface,
+            (200, 230, 255),
+            (int(self.x), int(self.y)),
+            max(2, self.radius - 2),
+        )
 
 
 @dataclass(slots=True)
@@ -106,7 +131,7 @@ class PiercingBullet(Projectile):
         speed: float,
         field_index: int = 0,
         pierce_limit: int = 3,
-    ) -> "PiercingBullet":
+    ) -> PiercingBullet:
         dx = target[0] - origin[0]
         dy = target[1] - origin[1]
         length = math.hypot(dx, dy)
@@ -126,7 +151,10 @@ class PiercingBullet(Projectile):
         )
 
     def can_hit(self, enemy: Enemy) -> bool:
-        return id(enemy) not in self.hit_enemy_ids and len(self.hit_enemy_ids) < self.pierce_limit
+        return (
+            id(enemy) not in self.hit_enemy_ids
+            and len(self.hit_enemy_ids) < self.pierce_limit
+        )
 
     def register_hit(self, enemy: Enemy) -> None:
         self.hit_enemy_ids.add(id(enemy))
@@ -134,8 +162,16 @@ class PiercingBullet(Projectile):
             self.alive = False
 
     def draw(self, surface: pygame.Surface) -> None:
-        pygame.draw.ellipse(surface, (155, 89, 182), pygame.Rect(int(self.x - 10), int(self.y - 5), 20, 10))
-        pygame.draw.ellipse(surface, (255, 255, 255), pygame.Rect(int(self.x - 6), int(self.y - 3), 12, 6))
+        pygame.draw.ellipse(
+            surface,
+            (155, 89, 182),
+            pygame.Rect(int(self.x - 10), int(self.y - 5), 20, 10),
+        )
+        pygame.draw.ellipse(
+            surface,
+            (255, 255, 255),
+            pygame.Rect(int(self.x - 6), int(self.y - 3), 12, 6),
+        )
 
 
 @dataclass(slots=True)
@@ -153,7 +189,7 @@ class Fireball(Projectile):
         speed: float,
         field_index: int = 0,
         explosion_radius: float = 95.0,
-    ) -> "Fireball":
+    ) -> Fireball:
         dx = target[0] - origin[0]
         dy = target[1] - origin[1]
         length = math.hypot(dx, dy)
@@ -198,7 +234,14 @@ class Explosion:
                 if enemy.alive and enemy.distance_to((self.x, self.y)) <= self.radius:
                     enemy.take_damage(self.damage)
                     if self.status_effect == "dot":
-                        enemy.apply_status(StatusEffect("dot", duration=2.0, tick_damage=max(2.0, self.damage * 0.08), tick_interval=0.5))
+                        enemy.apply_status(
+                            StatusEffect(
+                                "dot",
+                                duration=2.0,
+                                tick_damage=max(2.0, self.damage * 0.08),
+                                tick_interval=0.5,
+                            )
+                        )
                     elif self.status_effect == "stun":
                         enemy.apply_status(StatusEffect("stun", duration=0.85))
             self.applied = True
@@ -279,12 +322,22 @@ class LightningStrike:
     path: list[tuple[int, int]]
     damage: float
     duration: float = 0.22
+    segment_delay: float = 0.0
     age: float = 0.0
     applied: bool = True
     alive: bool = True
 
-    # 기존 UnlockScene 호환용: LightningStrike(x, y, damage, radius) 형태도 허용하기 위해 __init__ 직접 정의
-    def __init__(self, x_or_path, y: float | None = None, damage: float = 0.0, radius: float = 0.0, duration: float = 0.22) -> None:
+    # 기존 UnlockScene 호환용:
+    # LightningStrike(x, y, damage, radius) 형태도 허용하기 위해 __init__ 직접 정의
+    def __init__(
+        self,
+        x_or_path,
+        y: float | None = None,
+        damage: float = 0.0,
+        radius: float = 0.0,
+        duration: float = 0.22,
+        segment_delay: float = 0.0,
+    ) -> None:
         if isinstance(x_or_path, list):
             self.path = x_or_path
             self.damage = damage
@@ -293,7 +346,11 @@ class LightningStrike:
             yy = int(y if y is not None else 0)
             self.path = [(x, 70), (x, yy)]
             self.damage = damage
-        self.duration = duration
+        self.segment_delay = segment_delay
+        self.duration = max(
+            duration,
+            self.segment_delay * max(1, len(self.path) - 1) + 0.14,
+        )
         self.age = 0.0
         self.applied = True
         self.alive = True
@@ -305,6 +362,16 @@ class LightningStrike:
     def draw(self, surface: pygame.Surface) -> None:
         if len(self.path) < 2:
             return
-        for start, end in zip(self.path, self.path[1:]):
+        segment_count = self._visible_segment_count()
+        visible_path = self.path[: segment_count + 1]
+        for start, end in zip(visible_path, visible_path[1:]):
             pygame.draw.line(surface, COLOR_LIGHTNING, start, end, 5)
             pygame.draw.circle(surface, COLOR_LIGHTNING, end, 14, 2)
+
+    def _visible_segment_count(self) -> int:
+        if len(self.path) < 2:
+            return 0
+        total_segments = len(self.path) - 1
+        if self.segment_delay <= 0.0:
+            return total_segments
+        return min(total_segments, int(self.age / self.segment_delay) + 1)

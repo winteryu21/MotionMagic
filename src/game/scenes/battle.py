@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -283,7 +284,7 @@ class BattleScene:
             elif event.key == pygame.K_e:
                 self._push_gesture(GESTURE_PAPER)
         elif event.type == pygame.MOUSEMOTION:
-            self.aim_pos = event.pos
+            self.aim_pos = self._snap_aim_to_nearest_enemy(event.pos)
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             self._cast_current_combo(self.aim_pos)
 
@@ -303,7 +304,9 @@ class BattleScene:
         if event.kind == "stack" and event.gesture in STACK_GESTURES:
             self._push_gesture(event.gesture)
         elif event.kind == "aim":
-            self.aim_pos = screen_pos_from_gesture_event(event)
+            self.aim_pos = self._snap_aim_to_nearest_enemy(
+                screen_pos_from_gesture_event(event)
+            )
         elif event.kind == "fire":
             self._cast_current_combo(screen_pos_from_gesture_event(event))
         elif event.kind == "special":
@@ -328,7 +331,7 @@ class BattleScene:
             self._handle_reward_event(click_event)
 
     def _cast_current_combo(self, aim_pos: tuple[int, int]) -> None:
-        self.aim_pos = aim_pos
+        self.aim_pos = self._snap_aim_to_nearest_enemy(aim_pos)
         self.message = self.magic.cast_by_combo(
             self.current_combo,
             self.player,
@@ -341,6 +344,26 @@ class BattleScene:
             self._start_player_cast_animation()
         self.message_timer = 1.4
         self.current_combo.clear()
+
+    def _snap_aim_to_nearest_enemy(self, aim_pos: tuple[int, int]) -> tuple[int, int]:
+        """Return the nearest alive enemy position to the requested aim point.
+
+        Args:
+            aim_pos: Raw screen coordinate from mouse or gesture input.
+
+        Returns:
+            The nearest alive enemy center in the active field, or ``aim_pos`` when
+            no valid target exists.
+        """
+        alive_enemies = [enemy for enemy in self.active_field.enemies if enemy.alive]
+        if not alive_enemies:
+            return aim_pos
+
+        target = min(
+            alive_enemies,
+            key=lambda enemy: math.hypot(enemy.x - aim_pos[0], enemy.y - aim_pos[1]),
+        )
+        return (round(target.x), round(target.y))
 
     def _handle_special_gesture(self, event: GestureEvent) -> None:
         is_new_hold = (
@@ -467,6 +490,7 @@ class BattleScene:
             defeated = battle_field.update(dt, self.player)
             if defeated:
                 self.spawner.record_defeated(defeated)
+        self.aim_pos = self._snap_aim_to_nearest_enemy(self.aim_pos)
 
         if not self.player.alive:
             self._open_result_scene()

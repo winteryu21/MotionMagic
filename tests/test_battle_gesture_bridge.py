@@ -65,9 +65,21 @@ class _FieldStub:
 
     player_pos = (11, 22)
 
+    def __init__(self) -> None:
+        self.enemies: list[_EnemyStub] = []
+
     def update(self, dt: float, player: object) -> int:
         """Return zero defeated enemies."""
         return 0
+
+
+class _EnemyStub:
+    """Minimal enemy test double."""
+
+    def __init__(self, x: float, y: float, alive: bool = True) -> None:
+        self.x = x
+        self.y = y
+        self.alive = alive
 
 
 class _PressedKeysStub:
@@ -122,6 +134,29 @@ def test_battle_scene_maps_aim_event_to_screen_coordinates() -> None:
     assert scene.aim_pos == (round(SCREEN_WIDTH * 0.25), round(SCREEN_HEIGHT * 0.75))
 
 
+def test_battle_scene_snaps_aim_event_to_nearest_enemy() -> None:
+    """Aim events should lock the crosshair onto the closest active-field enemy."""
+    scene = _scene_stub()
+    scene.active_field.enemies = [
+        _EnemyStub(900.0, 600.0),
+        _EnemyStub(310.0, 220.0),
+        _EnemyStub(250.0, 180.0, alive=False),
+    ]
+
+    scene.handle_gesture_event(
+        GestureEvent(
+            gesture="aim",
+            confidence=0.9,
+            aim_x=0.25,
+            aim_y=0.30,
+            kind="aim",
+            channel="right",
+        )
+    )
+
+    assert scene.aim_pos == (310, 220)
+
+
 def test_battle_scene_pushes_stack_gesture_from_bridge_event() -> None:
     """Stack events should append only battle combo gestures."""
     scene = _scene_stub()
@@ -167,6 +202,52 @@ def test_battle_scene_casts_current_combo_from_fire_event() -> None:
     )
     assert scene.aim_pos == magic.calls[0]["aim_pos"]
     assert scene.current_combo == []
+
+
+def test_battle_scene_casts_fire_event_at_nearest_enemy() -> None:
+    """Fire events should cast at the target locked nearest to the raw aim point."""
+    scene = _scene_stub()
+    scene.current_combo = [GESTURE_ROCK]
+    scene.active_field.enemies = [
+        _EnemyStub(900.0, 600.0),
+        _EnemyStub(255.0, 210.0),
+    ]
+
+    scene.handle_gesture_event(
+        GestureEvent(
+            gesture="fire",
+            confidence=0.9,
+            aim_x=0.2,
+            aim_y=0.3,
+            kind="fire",
+            channel="right",
+        )
+    )
+
+    magic = scene.magic
+    assert isinstance(magic, _MagicStub)
+    assert magic.calls[0]["aim_pos"] == (255, 210)
+    assert scene.aim_pos == (255, 210)
+
+
+def test_battle_scene_keeps_crosshair_locked_to_moving_enemy(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """Battle updates should keep the crosshair attached to the nearest enemy."""
+    scene = _scene_stub()
+    monkeypatch.setattr(pygame.key, "get_pressed", lambda: _PressedKeysStub())
+    enemy = _EnemyStub(410.0, 250.0)
+    scene.active_field.enemies = [enemy]
+    scene.aim_pos = (400, 240)
+
+    scene.update(0.1)
+    assert scene.aim_pos == (410, 250)
+
+    enemy.x = 430.0
+    enemy.y = 260.0
+    scene.update(0.1)
+
+    assert scene.aim_pos == (430, 260)
 
 
 def test_battle_scene_reports_special_gesture_without_casting() -> None:

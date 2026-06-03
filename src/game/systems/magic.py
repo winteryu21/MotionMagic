@@ -305,6 +305,17 @@ class MagicSystem:
         self.unlock_spell(spell)
         return spell
 
+    def unlock_all_spells(self) -> int:
+        """Unlock every spell and return the number newly unlocked.
+
+        Returns:
+            Number of spells that were locked before this call.
+        """
+        locked_spells = self.locked_spells()
+        for spell in locked_spells:
+            self.unlock_spell(spell)
+        return len(locked_spells)
+
     def spell_for_combo(self, combo: list[str]) -> Spell | None:
         if not combo:
             return None

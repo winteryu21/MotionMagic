@@ -23,9 +23,15 @@ from src.game.settings import (
     BASE_LINE_X,
     BATTLE_BACKGROUND_FILES,
     COLOR_BASE,
+    COLOR_DEBUG_NOTICE_BG,
     COLOR_FIELD_BG,
     COLOR_INACTIVE_FIELD_BG,
+    COLOR_MUTED,
     COLOR_WHITE,
+    DEBUG_NOTICE_BORDER_RADIUS,
+    DEBUG_NOTICE_DURATION_SECONDS,
+    DEBUG_NOTICE_PADDING_X,
+    DEBUG_NOTICE_PADDING_Y,
     GESTURE_COMBO_SIZE,
     GESTURE_PAPER,
     GESTURE_ROCK,
@@ -55,6 +61,7 @@ SPECIAL_GESTURE_DISPLAY_NAMES = {
     "clasp": "다이아몬드",
     "sonaldo": "손흥민 시그니처",
 }
+DEBUG_UNLOCK_ALL_SPELLS_NOTICE = "디버그 모드: 모든 마법 언락"
 
 
 @dataclass(slots=True)
@@ -186,6 +193,9 @@ class BattleScene:
         self.aim_pos = (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
         self.message = ""
         self.message_timer = 0.0
+        self.debug_notice_text = ""
+        self.debug_notice_timer = 0.0
+        self.debug_notice_font = get_font(34, bold=True)
         self.special_hold_gesture: str | None = None
         self.special_hold_timer = 0.0
         self.reward_pending = False
@@ -267,6 +277,10 @@ class BattleScene:
         return alive + self.spawner.remaining_to_spawn
 
     def handle_event(self, event: pygame.event.Event) -> None:
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_u:
+            self._unlock_all_spells_for_debug()
+            return
+
         if self.unlock_scene.pending:
             self._handle_unlock_event(event)
             return
@@ -285,7 +299,7 @@ class BattleScene:
             elif event.key == pygame.K_e:
                 self._push_gesture(GESTURE_PAPER)
         elif event.type == pygame.MOUSEMOTION:
-            self.aim_pos = self._snap_aim_to_nearest_enemy(event.pos)
+            self.aim_pos = event.pos
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             self._cast_current_combo(self.aim_pos)
 
@@ -305,9 +319,7 @@ class BattleScene:
         if event.kind == "stack" and event.gesture in STACK_GESTURES:
             self._push_gesture(event.gesture)
         elif event.kind == "aim":
-            self.aim_pos = self._snap_aim_to_nearest_enemy(
-                screen_pos_from_gesture_event(event)
-            )
+            self.aim_pos = screen_pos_from_gesture_event(event)
         elif event.kind == "fire":
             self._cast_current_combo(screen_pos_from_gesture_event(event))
         elif event.kind == "special":
@@ -333,12 +345,13 @@ class BattleScene:
 
     def _cast_current_combo(self, aim_pos: tuple[int, int]) -> None:
         cast_field_index = self.active_field_index
-        self.aim_pos = self._snap_aim_to_nearest_enemy(aim_pos)
+        self.aim_pos = aim_pos
+        cast_aim_pos = self._assist_aim_to_nearest_enemy(aim_pos)
         self.message = self.magic.cast_by_combo(
             self.current_combo,
             self.player,
             self.active_field,
-            self.aim_pos,
+            cast_aim_pos,
             fields=self.fields,
             origin_pos=self.active_field.player_pos,
         )
@@ -347,15 +360,18 @@ class BattleScene:
         self.message_timer = 1.4
         self.current_combo.clear()
 
-    def _snap_aim_to_nearest_enemy(self, aim_pos: tuple[int, int]) -> tuple[int, int]:
-        """Return the nearest alive enemy position to the requested aim point.
+    def _assist_aim_to_nearest_enemy(
+        self,
+        aim_pos: tuple[int, int],
+    ) -> tuple[int, int]:
+        """Return the nearest alive enemy position for spell targeting.
 
         Args:
             aim_pos: Raw screen coordinate from mouse or gesture input.
 
         Returns:
             The nearest alive enemy center in the active field, or ``aim_pos`` when
-            no valid target exists.
+            no valid target exists. This does not mutate the visible crosshair.
         """
         alive_enemies = [enemy for enemy in self.active_field.enemies if enemy.alive]
         if not alive_enemies:
@@ -398,6 +414,14 @@ class BattleScene:
             GESTURE_DISPLAY_NAMES.get(g, g) for g in self.current_combo
         )
         self.message_timer = 1.2
+
+    def _unlock_all_spells_for_debug(self) -> None:
+        newly_unlocked = self.magic.unlock_all_spells()
+        suffix = f" ({newly_unlocked}개 신규)" if newly_unlocked > 0 else ""
+        self.debug_notice_text = DEBUG_UNLOCK_ALL_SPELLS_NOTICE
+        self.debug_notice_timer = DEBUG_NOTICE_DURATION_SECONDS
+        self.message = f"{DEBUG_UNLOCK_ALL_SPELLS_NOTICE}{suffix}"
+        self.message_timer = DEBUG_NOTICE_DURATION_SECONDS
 
     def _handle_unlock_event(self, event: pygame.event.Event) -> None:
         if event.type == pygame.KEYDOWN and event.key in (
@@ -471,6 +495,7 @@ class BattleScene:
         self.player_cast_timers = [
             max(0.0, timer - dt) for timer in self.player_cast_timers
         ]
+        self.debug_notice_timer = max(0.0, self.debug_notice_timer - dt)
         self._update_special_hold(dt)
 
         if self.unlock_scene.pending:
@@ -490,7 +515,6 @@ class BattleScene:
             defeated = battle_field.update(dt, self.player)
             if defeated:
                 self.spawner.record_defeated(defeated)
-        self.aim_pos = self._snap_aim_to_nearest_enemy(self.aim_pos)
 
         if not self.player.alive:
             self._open_result_scene()
@@ -538,6 +562,42 @@ class BattleScene:
                 self.unlock_scene.demo_field,
             )
         self.crosshair.draw(surface, self.aim_pos)
+        self._draw_debug_notice(surface)
+
+    def _draw_debug_notice(self, surface: pygame.Surface) -> None:
+        if self.debug_notice_timer <= 0.0 or not self.debug_notice_text:
+            return
+
+        text = self.debug_notice_font.render(
+            self.debug_notice_text,
+            True,
+            COLOR_WHITE,
+        )
+        panel = pygame.Rect(
+            0,
+            0,
+            text.get_width() + DEBUG_NOTICE_PADDING_X * 2,
+            text.get_height() + DEBUG_NOTICE_PADDING_Y * 2,
+        )
+        panel.center = (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
+
+        overlay = pygame.Surface(panel.size, pygame.SRCALPHA)
+        overlay_rect = overlay.get_rect()
+        pygame.draw.rect(
+            overlay,
+            COLOR_DEBUG_NOTICE_BG,
+            overlay_rect,
+            border_radius=DEBUG_NOTICE_BORDER_RADIUS,
+        )
+        pygame.draw.rect(
+            overlay,
+            COLOR_MUTED,
+            overlay_rect,
+            1,
+            border_radius=DEBUG_NOTICE_BORDER_RADIUS,
+        )
+        overlay.blit(text, (DEBUG_NOTICE_PADDING_X, DEBUG_NOTICE_PADDING_Y))
+        surface.blit(overlay, panel)
 
     def _draw_inactive_field_minimap(self, surface: pygame.Surface) -> None:
         mini_w, mini_h = 320, 180  # 16:9 비율 유지 (1920x1080 / 6)

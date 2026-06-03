@@ -16,6 +16,7 @@ from src.game.settings import (
     SCREEN_WIDTH,
     SPECIAL_GESTURE_HOLD_GRACE_SECONDS,
 )
+from src.game.systems.magic import MagicSystem
 
 
 class _MagicStub:
@@ -101,6 +102,8 @@ def _scene_stub() -> BattleScene:
     scene.aim_pos = (0, 0)
     scene.message = ""
     scene.message_timer = 0.0
+    scene.debug_notice_text = ""
+    scene.debug_notice_timer = 0.0
     scene.special_hold_gesture = None
     scene.special_hold_timer = 0.0
     scene.player = _PlayerStub()
@@ -136,8 +139,8 @@ def test_battle_scene_maps_aim_event_to_screen_coordinates() -> None:
     assert scene.aim_pos == (round(SCREEN_WIDTH * 0.25), round(SCREEN_HEIGHT * 0.75))
 
 
-def test_battle_scene_snaps_aim_event_to_nearest_enemy() -> None:
-    """Aim events should lock the crosshair onto the closest active-field enemy."""
+def test_battle_scene_keeps_aim_event_at_raw_position_with_enemies() -> None:
+    """Aim events should keep the visible crosshair at the raw aim position."""
     scene = _scene_stub()
     scene.active_field.enemies = [
         _EnemyStub(900.0, 600.0),
@@ -156,7 +159,10 @@ def test_battle_scene_snaps_aim_event_to_nearest_enemy() -> None:
         )
     )
 
-    assert scene.aim_pos == (310, 220)
+    assert scene.aim_pos == (
+        round(SCREEN_WIDTH * 0.25),
+        round(SCREEN_HEIGHT * 0.30),
+    )
 
 
 def test_battle_scene_pushes_stack_gesture_from_bridge_event() -> None:
@@ -207,7 +213,7 @@ def test_battle_scene_casts_current_combo_from_fire_event() -> None:
 
 
 def test_battle_scene_casts_fire_event_at_nearest_enemy() -> None:
-    """Fire events should cast at the target locked nearest to the raw aim point."""
+    """Fire events should assist only the spell target, not the crosshair."""
     scene = _scene_stub()
     scene.current_combo = [GESTURE_ROCK]
     scene.active_field.enemies = [
@@ -229,7 +235,10 @@ def test_battle_scene_casts_fire_event_at_nearest_enemy() -> None:
     magic = scene.magic
     assert isinstance(magic, _MagicStub)
     assert magic.calls[0]["aim_pos"] == (255, 210)
-    assert scene.aim_pos == (255, 210)
+    assert scene.aim_pos == (
+        round(SCREEN_WIDTH * 0.2),
+        round(SCREEN_HEIGHT * 0.3),
+    )
 
 
 def test_battle_scene_starts_cast_animation_only_on_active_field() -> None:
@@ -269,10 +278,10 @@ def test_battle_scene_player_image_uses_each_field_cast_timer() -> None:
     assert scene._current_player_image(1) is cast_image
 
 
-def test_battle_scene_keeps_crosshair_locked_to_moving_enemy(
+def test_battle_scene_keeps_crosshair_raw_during_update(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """Battle updates should keep the crosshair attached to the nearest enemy."""
+    """Battle updates should not attach the crosshair to a moving enemy."""
     scene = _scene_stub()
     monkeypatch.setattr(pygame.key, "get_pressed", lambda: _PressedKeysStub())
     enemy = _EnemyStub(410.0, 250.0)
@@ -280,13 +289,28 @@ def test_battle_scene_keeps_crosshair_locked_to_moving_enemy(
     scene.aim_pos = (400, 240)
 
     scene.update(0.1)
-    assert scene.aim_pos == (410, 250)
+    assert scene.aim_pos == (400, 240)
 
     enemy.x = 430.0
     enemy.y = 260.0
     scene.update(0.1)
 
-    assert scene.aim_pos == (430, 260)
+    assert scene.aim_pos == (400, 240)
+
+
+def test_battle_scene_debug_u_unlocks_all_spells() -> None:
+    """U should unlock every spell and show the centered debug notice."""
+    scene = _scene_stub()
+    scene.magic = MagicSystem()
+    locked_count = len(scene.magic.locked_spells())
+
+    scene.handle_event(pygame.event.Event(pygame.KEYDOWN, {"key": pygame.K_u}))
+
+    assert locked_count > 0
+    assert scene.magic.locked_spells() == []
+    assert scene.debug_notice_text == "디버그 모드: 모든 마법 언락"
+    assert scene.debug_notice_timer > 0.0
+    assert "디버그 모드: 모든 마법 언락" in scene.message
 
 
 def test_battle_scene_reports_special_gesture_without_casting() -> None:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import sys
 from queue import Empty, Queue
 
@@ -22,6 +23,7 @@ from src.game.settings import (
     COLOR_MUTED,
     DEBUG_CAMERA_OVERLAY_DEFAULT,
     DEBUG_CAMERA_OVERLAY_WIDTH,
+    DEFAULT_CAMERA_ID,
     FPS,
     SCREEN_HEIGHT,
     SCREEN_WIDTH,
@@ -29,6 +31,46 @@ from src.game.settings import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _env_int(name: str, default: int) -> int:
+    """환경변수 정수 값을 읽는다.
+
+    Args:
+        name: 환경변수 이름.
+        default: 환경변수가 없거나 정수가 아닐 때 사용할 값.
+
+    Returns:
+        환경변수에서 읽은 정수 또는 기본값.
+    """
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return default
+
+    try:
+        return int(raw_value)
+    except ValueError:
+        logger.warning(
+            "%s=%r 값을 정수로 해석할 수 없어 기본값을 사용합니다.", name, raw_value
+        )
+        return default
+
+
+def _env_flag(name: str, default: bool) -> bool:
+    """환경변수 boolean 값을 읽는다.
+
+    Args:
+        name: 환경변수 이름.
+        default: 환경변수가 없을 때 사용할 값.
+
+    Returns:
+        환경변수가 true 계열이면 ``True``, false 계열이면 ``False``.
+    """
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return default
+
+    return raw_value.strip().lower() in {"1", "true", "yes", "on"}
 
 
 class App:
@@ -41,10 +83,14 @@ class App:
         self.clock = pygame.time.Clock()
         self.running = True
         self.scene = TitleScene()
-        self.debug_camera_overlay = DEBUG_CAMERA_OVERLAY_DEFAULT
+        self.debug_camera_overlay = _env_flag(
+            "MOTIONMAGIC_DEBUG_CAMERA",
+            default=DEBUG_CAMERA_OVERLAY_DEFAULT,
+        )
         self.gesture_events: Queue[GestureEvent] = Queue()
         self.camera_thread = CameraThread(
             self.gesture_events.put,
+            camera_id=_env_int("MOTIONMAGIC_CAMERA_ID", DEFAULT_CAMERA_ID),
             ema_alpha=AIM_EMA_ALPHA,
             aim_sensitivity=AIM_SENSITIVITY,
         )

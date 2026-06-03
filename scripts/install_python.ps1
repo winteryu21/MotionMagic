@@ -125,5 +125,7 @@ if (Test-Path $PipPath) {
 
 Write-Host "=============================================" -ForegroundColor Green
 Write-Host " 환경 구축 완료! 프로젝트 루트의 .venv 가상환경을 사용하세요." -ForegroundColor Green
-Write-Host " Pygame 게임 실행 방법: .venv\Scripts\python -m src.game.app" -ForegroundColor Green
+Write-Host " 게임 실행 방법: run_game.bat" -ForegroundColor Green
+Write-Host " 07 진단 실행 방법: run_07_gesture_test.bat" -ForegroundColor Green
+Write-Host " 수동 실행 시: .venv\Scripts\python -m src.game.app" -ForegroundColor Green
 Write-Host "=============================================" -ForegroundColor Green

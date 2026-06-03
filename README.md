@@ -31,16 +31,27 @@
 
 ## 빠른 시작
 
+Windows에서는 아래 배치 파일을 권장합니다. 전역 `py`가 아니라 프로젝트의
+`.venv` Python을 강제로 사용하므로 `pygame`/`mediapipe` 설치 위치가 꼬이지
+않습니다.
+
+```bat
+setup_env.bat
+run_game.bat
+```
+
+웹캠이 열리지 않으면 카메라 번호를 바꿔 실행합니다.
+
+```bat
+run_game.bat 1
+run_game.bat 1 debug
+run_07_gesture_test.bat 1
+```
+
+수동 실행이 필요하면 반드시 `.venv` Python을 사용합니다.
+
 ```bash
-# 1. 가상환경 생성 & 활성화
-python -m venv .venv
-.venv\Scripts\activate
-
-# 2. 의존성 설치
-pip install -r requirements.txt
-
-# 3. 게임 실행
-python -m src.game.app
+.venv\Scripts\python -m src.game.app
 ```
 
 ## 프로젝트 구조

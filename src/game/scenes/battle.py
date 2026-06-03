@@ -8,7 +8,7 @@ import pygame
 
 from src.game.entities.enemy import Enemy
 from src.game.entities.player import Player
-from src.game.entities.projectile import Explosion, LightningStrike, MagicMissile
+from src.game.entities.projectile import Explosion, LightningStrike, MagicMissile, Meteor
 from src.game.settings import (
     BASE_LINE_X,
     BATTLE_BACKGROUND_FILES,
@@ -17,6 +17,7 @@ from src.game.settings import (
     COLOR_INACTIVE_FIELD_BG,
     COLOR_MUTED,
     COLOR_WHITE,
+    GESTURE_COMBO_SIZE,
     GESTURE_PAPER,
     GESTURE_ROCK,
     GESTURE_SCISSORS,
@@ -27,6 +28,7 @@ from src.game.settings import (
     SCREEN_WIDTH,
 )
 from src.game.systems.magic import MagicSystem
+from src.game.systems.combat import CombatSystem
 from src.game.systems.spawner import WaveSpawner
 from src.game.ui.crosshair import Crosshair
 from src.game.systems.reward import RewardOption, RewardSystem
@@ -41,15 +43,23 @@ class BattleField:
     background: pygame.Surface | None = None
     enemies: list[Enemy] = field(default_factory=list)
     projectiles: list[MagicMissile] = field(default_factory=list)
-    effects: list[Explosion | LightningStrike] = field(default_factory=list)
+    effects: list[Explosion | LightningStrike | Meteor] = field(default_factory=list)
     @property
     def remaining_enemies(self) -> int:
         return sum(1 for enemy in self.enemies if enemy.alive)
 
+    @property
+    def base_line_x(self) -> int:
+        return BASE_LINE_X if self.index == 0 else SCREEN_WIDTH - BASE_LINE_X
+
+    @property
+    def player_pos(self) -> tuple[int, int]:
+        return (PLAYER_X, PLAYER_Y) if self.index == 0 else (SCREEN_WIDTH - PLAYER_X, PLAYER_Y)
+
     def update(self, dt: float, player: Player) -> int:
         defeated_count = 0
         for enemy in list(self.enemies):
-            enemy.update(dt, BASE_LINE_X)
+            enemy.update(dt, self.base_line_x)
             if enemy.reached_base:
                 player.take_damage(enemy.siege_damage)
                 self.enemies.remove(enemy)
@@ -59,6 +69,10 @@ class BattleField:
 
         for projectile in list(self.projectiles):
             projectile.update(dt)
+
+        CombatSystem.update_projectile_collisions(self)
+
+        for projectile in list(self.projectiles):
             if not projectile.alive:
                 self.projectiles.remove(projectile)
 
@@ -69,7 +83,7 @@ class BattleField:
 
         return defeated_count
 
-    def draw(self, surface: pygame.Surface, active: bool) -> None:
+    def draw(self, surface: pygame.Surface, active: bool, player_image: pygame.Surface | None = None) -> None:
         field_rect = pygame.Rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT)
         if self.background is not None:
             surface.blit(self.background, (0, 0))
@@ -80,10 +94,17 @@ class BattleField:
         else:
             pygame.draw.rect(surface, COLOR_FIELD_BG if active else COLOR_INACTIVE_FIELD_BG, field_rect)
 
-        # 좌측 기지 라인과 플레이어
-        pygame.draw.line(surface, COLOR_BASE, (BASE_LINE_X, 70), (BASE_LINE_X, SCREEN_HEIGHT - 70), 5)
-        pygame.draw.circle(surface, (90, 170, 255), (PLAYER_X, PLAYER_Y), 22)
-        pygame.draw.circle(surface, COLOR_WHITE, (PLAYER_X, PLAYER_Y), 26, 2)
+        # 전장 방향에 맞춘 기지 라인과 플레이어
+        base_x = self.base_line_x
+        player_x, player_y = self.player_pos
+        pygame.draw.line(surface, COLOR_BASE, (base_x, 70), (base_x, SCREEN_HEIGHT - 70), 5)
+        if player_image is not None:
+            image = pygame.transform.flip(player_image, True, False) if self.index == 1 else player_image
+            rect = image.get_rect(midbottom=(player_x, player_y + 32))
+            surface.blit(image, rect)
+        else:
+            pygame.draw.circle(surface, (90, 170, 255), (player_x, player_y), 22)
+            pygame.draw.circle(surface, COLOR_WHITE, (player_x, player_y), 26, 2)
 
         for enemy in self.enemies:
             enemy.draw(surface, active)
@@ -116,6 +137,10 @@ class BattleScene:
         self.next_scene: str | None = None
         self.result_cleared_stage = 0
         self.game_over = False
+        self.player_idle_image, self.player_cast_frames = self._load_player_sprites()
+        self.player_cast_timer = 0.0
+        self.player_cast_frame_time = 0.06
+        self.player_cast_total_time = self.player_cast_frame_time * max(1, len(self.player_cast_frames))
 
     def _load_field_backgrounds(self) -> list[pygame.Surface]:
         project_root = Path(__file__).resolve().parents[3]
@@ -128,6 +153,45 @@ class BattleScene:
             image = pygame.transform.smoothscale(image, (SCREEN_WIDTH, SCREEN_HEIGHT))
             backgrounds.append(image)
         return backgrounds
+
+    def _load_player_sprites(self) -> tuple[pygame.Surface | None, list[pygame.Surface]]:
+        project_root = Path(__file__).resolve().parents[3]
+        sprite_dir = project_root / "assets" / "sprites" / "player"
+        idle_path = sprite_dir / "wizard_player_idle_64.png"
+        cast_path = sprite_dir / "wizard_staff_raise_96_sheet.png"
+
+        idle_image: pygame.Surface | None = None
+        cast_frames: list[pygame.Surface] = []
+
+        if idle_path.exists():
+            idle_image = pygame.image.load(str(idle_path)).convert_alpha()
+
+        if cast_path.exists():
+            sheet = pygame.image.load(str(cast_path)).convert_alpha()
+            frame_w = 96
+            frame_h = 96
+            cols = sheet.get_width() // frame_w
+            rows = sheet.get_height() // frame_h
+            for row in range(rows):
+                for col in range(cols):
+                    rect = pygame.Rect(col * frame_w, row * frame_h, frame_w, frame_h)
+                    cast_frames.append(sheet.subsurface(rect).copy())
+
+        if cast_frames:
+            idle_image = cast_frames[0].copy()
+
+        return idle_image, cast_frames
+
+    def _current_player_image(self) -> pygame.Surface | None:
+        if self.player_cast_timer > 0.0 and self.player_cast_frames:
+            elapsed = self.player_cast_total_time - self.player_cast_timer
+            frame_index = min(len(self.player_cast_frames) - 1, int(elapsed / self.player_cast_frame_time))
+            return self.player_cast_frames[frame_index]
+        return self.player_idle_image
+
+    def _start_player_cast_animation(self) -> None:
+        if self.player_cast_frames:
+            self.player_cast_timer = self.player_cast_total_time
 
     @property
     def active_field(self) -> BattleField:
@@ -166,13 +230,17 @@ class BattleScene:
                 self.player,
                 self.active_field,
                 self.aim_pos,
+                fields=self.fields,
+                origin_pos=self.active_field.player_pos,
             )
+            if "Lv." in self.message:
+                self._start_player_cast_animation()
             self.message_timer = 1.4
             self.current_combo.clear()
 
     def _push_gesture(self, gesture: str) -> None:
         self.current_combo.append(gesture)
-        if len(self.current_combo) > 2:
+        if len(self.current_combo) > GESTURE_COMBO_SIZE:
             self.current_combo.pop(0)
         self.message = "입력: " + " + ".join({"scissors": "가위", "rock": "바위", "paper": "보"}.get(g, g) for g in self.current_combo)
         self.message_timer = 1.2
@@ -241,6 +309,8 @@ class BattleScene:
         self.next_scene = "result"
 
     def update(self, dt: float) -> None:
+        self.player_cast_timer = max(0.0, self.player_cast_timer - dt)
+
         if self.unlock_scene.pending:
             self.unlock_scene.update(dt, self.magic)
             self.message_timer = max(0.0, self.message_timer - dt)
@@ -270,7 +340,8 @@ class BattleScene:
         self.message_timer = max(0.0, self.message_timer - dt)
 
     def draw(self, surface: pygame.Surface) -> None:
-        self.active_field.draw(surface, active=True)
+        player_image = self._current_player_image()
+        self.active_field.draw(surface, active=True, player_image=player_image)
         self._draw_inactive_field_minimap(surface)
         self.crosshair.draw(surface, self.aim_pos)
         self.hud.draw(
@@ -295,27 +366,31 @@ class BattleScene:
 
 
     def _draw_inactive_field_minimap(self, surface: pygame.Surface) -> None:
-        mini_w, mini_h = 270, 124
+        mini_w, mini_h = 320, 180  # 16:9 비율 유지 (1920x1080 / 6)
         x, y = SCREEN_WIDTH - mini_w - 20, SCREEN_HEIGHT - mini_h - 20
         inactive_index = 1 - self.active_field_index
-        active = self.fields[self.active_field_index]
         inactive = self.fields[inactive_index]
+
+        # 반대편 전장을 임시 서페이스에 그대로 렌더링
+        temp_surface = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+        inactive.draw(temp_surface, active=False, player_image=self._current_player_image())
+
+        # 렌더링된 전장을 미니맵 크기로 축소
+        minimap_surface = pygame.transform.smoothscale(temp_surface, (mini_w, mini_h))
+        
+        # 메인 화면에 축소된 미니맵 그리기
         rect = pygame.Rect(x, y, mini_w, mini_h)
-        pygame.draw.rect(surface, (20, 22, 32), rect, border_radius=12)
-        pygame.draw.rect(surface, COLOR_MUTED, rect, 2, border_radius=12)
+        surface.blit(minimap_surface, (x, y))
+        
+        # 테두리
+        pygame.draw.rect(surface, (100, 100, 120), rect, 2, border_radius=4)
 
-        font = get_font(18)
-        title_font = get_font(20, bold=True)
-        total = self.spawner.current_plan.total_count
-        defeated = self.spawner.defeated_count
-
-        lines = [
-            (f"Wave Enemy  {defeated}/{total}", title_font),
-            (f"현재 전장 남은 적  {active.remaining_enemies}", font),
-            (f"반대 전장 남은 적  {inactive.remaining_enemies}", font),
-        ]
-        line_y = y + 14
-        for label_text, line_font in lines:
-            label = line_font.render(label_text, True, COLOR_WHITE)
-            surface.blit(label, (x + 14, line_y))
-            line_y += 32
+        # 반대편 전장 텍스트 표시
+        title_font = get_font(18, bold=True)
+        font = get_font(16)
+        
+        title = title_font.render(f"Field {inactive_index + 1}", True, (255, 255, 255))
+        surface.blit(title, (x + 10, y + 8))
+        
+        enemies_count = font.render(f"남은 적: {inactive.remaining_enemies}", True, (255, 100, 100))
+        surface.blit(enemies_count, (x + 10, y + 30))

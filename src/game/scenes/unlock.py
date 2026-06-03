@@ -7,7 +7,7 @@ import pygame
 
 from src.game.entities.enemy import Enemy
 from src.game.entities.player import Player
-from src.game.entities.projectile import Explosion, LightningStrike, MagicMissile
+from src.game.entities.projectile import Explosion, LightningStrike, MagicMissile, Meteor
 from src.game.settings import SCREEN_WIDTH
 from src.game.systems.magic import MagicSystem, Spell
 
@@ -16,7 +16,7 @@ from src.game.systems.magic import MagicSystem, Spell
 class UnlockDemoField:
     enemies: list[Enemy] = field(default_factory=list)
     projectiles: list[MagicMissile] = field(default_factory=list)
-    effects: list[Explosion | LightningStrike] = field(default_factory=list)
+    effects: list[Explosion | LightningStrike | Meteor] = field(default_factory=list)
 
 
 class UnlockScene:
@@ -25,7 +25,12 @@ class UnlockScene:
     def __init__(self) -> None:
         # 이 배열에 spell key를 추가하면 순서대로 해금 씬이 작동함.
         # 예: ["lightning", "ice_spear", "meteor"]
-        self.unlock_order: list[str] = ["lightning"]
+        self.unlock_order: list[str] = [
+            "lightning",
+            "explosion",
+            "piercing_bullet",
+            "meteor",
+        ]
         self.pending = False
         self.spell: Spell | None = None
         self.next_stage = 1

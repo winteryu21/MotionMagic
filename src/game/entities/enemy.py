@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 import math
 
 import pygame
@@ -63,6 +64,29 @@ class StatusEffect:
     tick_timer: float = 0.0
 
 
+_ENEMY_SPRITE_CACHE: dict[str, list[pygame.Surface]] = {}
+
+
+def _load_enemy_sprite_frames(enemy_type: str) -> list[pygame.Surface]:
+    if enemy_type in _ENEMY_SPRITE_CACHE:
+        return _ENEMY_SPRITE_CACHE[enemy_type]
+
+    project_root = Path(__file__).resolve().parents[3]
+    sprite_path = project_root / "assets" / "sprites" / "enemies" / f"slime_{enemy_type}_walk_96.png"
+    frames: list[pygame.Surface] = []
+
+    if sprite_path.exists():
+        sheet = pygame.image.load(str(sprite_path)).convert_alpha()
+        frame_w = frame_h = 96
+        cols = sheet.get_width() // frame_w
+        for col in range(cols):
+            rect = pygame.Rect(col * frame_w, 0, frame_w, frame_h)
+            frames.append(sheet.subsurface(rect).copy())
+
+    _ENEMY_SPRITE_CACHE[enemy_type] = frames
+    return frames
+
+
 @dataclass(slots=True)
 class Enemy:
     x: float
@@ -75,11 +99,20 @@ class Enemy:
     enemy_type: str = "normal"
     defense_rate: float = 0.0
     field_index: int = 0
+    advance_direction: int = -1
     status_effects: list[StatusEffect] = field(default_factory=list)
     reached_base: bool = False
+    anim_time: float = 0.0
 
     @classmethod
-    def from_type(cls, enemy_type: str, x: float, y: float, field_index: int = 0) -> "Enemy":
+    def from_type(
+        cls,
+        enemy_type: str,
+        x: float,
+        y: float,
+        field_index: int = 0,
+        advance_direction: int = -1,
+    ) -> "Enemy":
         stat = ENEMY_STATS[enemy_type]
         return cls(
             x=x,
@@ -92,11 +125,16 @@ class Enemy:
             enemy_type=stat.key,
             defense_rate=stat.defense_rate,
             field_index=field_index,
+            advance_direction=advance_direction,
         )
 
     @property
     def alive(self) -> bool:
         return self.hp > 0 and not self.reached_base
+
+    @property
+    def stunned(self) -> bool:
+        return any(effect.kind == "stun" for effect in self.status_effects)
 
     @property
     def rect(self) -> pygame.Rect:
@@ -132,23 +170,55 @@ class Enemy:
                 self.status_effects.remove(effect)
 
         if not stunned:
-            self.x -= self.speed * dt
+            self.x += self.speed * self.advance_direction * dt
+            self.anim_time += dt
 
-        if self.x <= base_line_x:
+        if self.advance_direction < 0 and self.x <= base_line_x:
+            self.reached_base = True
+        elif self.advance_direction > 0 and self.x >= base_line_x:
             self.reached_base = True
 
-    def draw(self, surface: pygame.Surface, active: bool = True) -> None:
-        if self.enemy_type == "fast":
-            color = COLOR_ENEMY_FAST
-        elif self.enemy_type == "tank":
-            color = COLOR_ENEMY_TANK
-        else:
-            color = COLOR_ENEMY
-        if not active:
-            color = tuple(max(0, c // 2) for c in color)
-        pygame.draw.circle(surface, color, (int(self.x), int(self.y)), self.size // 2)
+    def _draw_sprite(self, surface: pygame.Surface, active: bool) -> bool:
+        frames = _load_enemy_sprite_frames(self.enemy_type)
+        if not frames:
+            return False
 
-        if any(effect.kind == "stun" for effect in self.status_effects):
+        if self.stunned:
+            frame_index = 0
+        else:
+            frame_index = int(self.anim_time / 0.12) % len(frames)
+
+        image = frames[frame_index]
+        if self.advance_direction > 0:
+            image = pygame.transform.flip(image, True, False)
+
+        sprite_sizes = {"normal": 68, "fast": 56, "tank": 92}
+        target_size = sprite_sizes.get(self.enemy_type, max(32, self.size * 2))
+        image = pygame.transform.scale(image, (target_size, target_size))
+
+        if not active:
+            image = image.copy()
+            image.set_alpha(110)
+
+        rect = image.get_rect(midbottom=(int(self.x), int(self.y + self.size / 2)))
+        surface.blit(image, rect)
+        return True
+
+    def draw(self, surface: pygame.Surface, active: bool = True) -> None:
+        used_sprite = self._draw_sprite(surface, active)
+
+        if not used_sprite:
+            if self.enemy_type == "fast":
+                color = COLOR_ENEMY_FAST
+            elif self.enemy_type == "tank":
+                color = COLOR_ENEMY_TANK
+            else:
+                color = COLOR_ENEMY
+            if not active:
+                color = tuple(max(0, c // 2) for c in color)
+            pygame.draw.circle(surface, color, (int(self.x), int(self.y)), self.size // 2)
+
+        if self.stunned:
             pygame.draw.circle(surface, COLOR_STUN, (int(self.x), int(self.y)), self.size // 2 + 4, 2)
 
         bar_w = self.size + 12

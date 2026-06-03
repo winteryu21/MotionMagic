@@ -108,11 +108,14 @@ class WaveSpawner:
             field_index = self.spawned_count % len(fields)
             y_margin = 90
             enemy_key = self.current_plan.choose_enemy_key()
+            advance_direction = -1 if field_index == 0 else 1
+            spawn_x = SCREEN_WIDTH + 35 if advance_direction < 0 else -35
             enemy = Enemy.from_type(
                 enemy_type=enemy_key,
-                x=SCREEN_WIDTH + 35,
+                x=spawn_x,
                 y=random.randint(y_margin, SCREEN_HEIGHT - y_margin),
                 field_index=field_index,
+                advance_direction=advance_direction,
             )
             fields[field_index].enemies.append(enemy)
             self.spawned_count += 1

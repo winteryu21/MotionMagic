@@ -1,7 +1,7 @@
-"""하이브리드 CNN 모델 정의.
+"""1D CNN + 손가락 상태 결합 제스처 분류 모델.
 
-좌표 63차원 → Conv1d 브랜치, 손가락 상태 5차원 → Linear 브랜치.
-두 브랜치를 결합하여 제스처를 4클래스로 분류한다.
+3D 랜드마크 좌표에서 1D 합성곱으로 지역 특징을 추출한 뒤,
+5차원 손가락 상태 힌트 벡터와 결합하여 최종 분류한다.
 """
 
 from __future__ import annotations
@@ -9,58 +9,103 @@ from __future__ import annotations
 import torch
 import torch.nn as nn
 
-from src.game.settings import NUM_COORDS, NUM_FINGER_FEATURES, NUM_GESTURE_CLASSES, NUM_LANDMARKS
+from src.ai.preprocessor import NUM_CLASSES, NUM_COORDS, NUM_FINGERS
 
 
 class GestureCNN(nn.Module):
-    """하이브리드 CNN 제스처 분류 모델.
+    """1D CNN + Finger-State Hybrid 제스처 분류 신경망.
+
+    아키텍처:
+        1. 1D Conv 블록 (3층): ``(B, 3, 21)`` → 특징 벡터
+        2. Finger State MLP: ``(B, 5)`` → 중간 표현
+        3. Concat → FC → Softmax 분류
 
     Args:
-        num_classes: 분류할 제스처 클래스 수.
+        num_classes: 출력 클래스 수 (기본 4).
+        dropout_rate: 드롭아웃 비율 (기본 0.3).
     """
 
-    def __init__(self, num_classes: int = NUM_GESTURE_CLASSES) -> None:
+    def __init__(
+        self,
+        num_classes: int = NUM_CLASSES,
+        dropout_rate: float = 0.3,
+    ) -> None:
         super().__init__()
+        self.num_classes = num_classes
 
-        # Conv1d 브랜치: 좌표 (B, 3, 21)
-        self.conv_branch = nn.Sequential(
-            nn.Conv1d(NUM_COORDS, 64, kernel_size=3),   # (B, 64, 19)
-            nn.ReLU(),
-            nn.Conv1d(64, 128, kernel_size=3),           # (B, 128, 17)
-            nn.ReLU(),
-            nn.AdaptiveAvgPool1d(1),                     # (B, 128, 1)
-            nn.Flatten(),                                # (B, 128)
+        # 1D Conv 블록: 입력 (B, C=3, L=21)
+        self.conv_block = nn.Sequential(
+            # Conv1: (B, 3, 21) → (B, 32, 21)
+            nn.Conv1d(
+                in_channels=NUM_COORDS,
+                out_channels=32,
+                kernel_size=3,
+                padding=1,
+            ),
+            nn.BatchNorm1d(32),
+            nn.ReLU(inplace=True),
+            # Conv2: (B, 32, 21) → (B, 64, 21)
+            nn.Conv1d(
+                in_channels=32,
+                out_channels=64,
+                kernel_size=3,
+                padding=1,
+            ),
+            nn.BatchNorm1d(64),
+            nn.ReLU(inplace=True),
+            # Conv3: (B, 64, 21) → (B, 128, 21)
+            nn.Conv1d(
+                in_channels=64,
+                out_channels=128,
+                kernel_size=3,
+                padding=1,
+            ),
+            nn.BatchNorm1d(128),
+            nn.ReLU(inplace=True),
+            # Global Average Pooling: (B, 128, 21) → (B, 128)
+            nn.AdaptiveAvgPool1d(1),
         )
 
-        # Linear 브랜치: 손가락 상태 (B, 5)
-        self.finger_branch = nn.Sequential(
-            nn.Linear(NUM_FINGER_FEATURES, 32),
-            nn.ReLU(),
+        # 손가락 상태 MLP: (B, 5) → (B, 16)
+        self.finger_mlp = nn.Sequential(
+            nn.Linear(NUM_FINGERS, 16),
+            nn.ReLU(inplace=True),
         )
 
-        # 결합 분류기
+        # 결합 분류기: (B, 128 + 16) → (B, num_classes)
         self.classifier = nn.Sequential(
-            nn.Linear(128 + 32, 64),
-            nn.ReLU(),
-            nn.Dropout(0.3),
+            nn.Linear(128 + 16, 64),
+            nn.ReLU(inplace=True),
+            nn.Dropout(p=dropout_rate),
             nn.Linear(64, num_classes),
         )
 
     def forward(
         self,
-        coords: torch.Tensor,
+        landmarks: torch.Tensor,
         finger_states: torch.Tensor,
     ) -> torch.Tensor:
         """순전파.
 
         Args:
-            coords: 관절 좌표 텐서 (B, 3, 21).
-            finger_states: 손가락 펼침/접힘 상태 (B, 5).
+            landmarks: ``(B, 21, 3)`` 정규화된 3D 좌표 텐서.
+            finger_states: ``(B, 5)`` 손가락 상태 힌트 텐서.
 
         Returns:
-            로짓 텐서 (B, num_classes).
+            ``(B, num_classes)`` 로짓(logits) 텐서.
         """
-        conv_out = self.conv_branch(coords)          # (B, 128)
-        finger_out = self.finger_branch(finger_states)  # (B, 32)
-        combined = torch.cat([conv_out, finger_out], dim=1)  # (B, 160)
-        return self.classifier(combined)             # (B, num_classes)
+        # (B, 21, 3) → (B, 3, 21) for Conv1d
+        x = landmarks.permute(0, 2, 1)  # (B, C=3, L=21)
+
+        # 1D Conv 특징 추출
+        x = self.conv_block(x)  # (B, 128, 1)
+        x = x.squeeze(-1)  # (B, 128)
+
+        # 손가락 상태 MLP
+        f = self.finger_mlp(finger_states)  # (B, 16)
+
+        # 결합 및 분류
+        combined = torch.cat([x, f], dim=1)  # (B, 144)
+        logits = self.classifier(combined)  # (B, num_classes)
+
+        return logits

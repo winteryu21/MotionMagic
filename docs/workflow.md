@@ -35,7 +35,7 @@
 | 1-5 | 전장 2개 전환 (키보드 Tab) | `battle.py` |
 | 1-6 | HUD (텍스트: HP, 웨이브 번호) | `hud.py` |
 
-- 제스처 입력은 **키보드로 대체** (숫자 키 1~4 → fist/palm/point/scissors)
+- 제스처 입력은 **키보드로 대체** (숫자 키 1~4 → rock/paper/scissors/trigger)
 - **검증**: 게임 실행 + `pytest` (데미지 계산, 스폰 로직)
 
 ## Phase 2 — 마법 시스템
@@ -48,7 +48,7 @@
 | 2-4 | 전투 시스템 통합 (자동공격 + 마법) | `combat.py` |
 
 - 여전히 키보드 입력 + 단색 사각형
-- **검증**: `pytest` (fist+palm → 파이어볼 등 조합 검증)
+- **검증**: `pytest` (rock+paper → 파이어볼 등 조합 검증)
 
 ## Phase 3 — AI ↔ 게임 통합
 

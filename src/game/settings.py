@@ -17,7 +17,6 @@ BASE_LINE_X = 45
 PLAYER_X = 95
 PLAYER_Y = SCREEN_HEIGHT // 2
 
-
 # ── 전투 배경 ──
 BATTLE_BACKGROUND_FILES = (
     "assets/maps/ice_battle.png",
@@ -29,7 +28,14 @@ BATTLE_BACKGROUND_FILES = (
 GESTURE_SCISSORS = "scissors"
 GESTURE_ROCK = "rock"
 GESTURE_PAPER = "paper"
-GESTURE_LABELS: list[str] = [GESTURE_SCISSORS, GESTURE_ROCK, GESTURE_PAPER]
+GESTURE_TRIGGER = "trigger"
+GESTURE_LABELS: list[str] = [
+    GESTURE_SCISSORS,
+    GESTURE_ROCK,
+    GESTURE_PAPER,
+    GESTURE_TRIGGER,
+]
+TWO_HAND_GESTURE_LABELS: list[str] = ["clasp", "sonaldo"]
 GESTURE_COMBO_SIZE = 3
 GESTURE_CONFIDENCE_THRESHOLD = 0.85
 
@@ -49,8 +55,8 @@ WAVE_CLEAR_DELAY = 1.5
 
 # ── 에임 ──
 AIM_SENSITIVITY = 2.5
-AIM_EMA_ALPHA = 0.3
-AIM_BUFFER_SIZE = 5
+AIM_EMA_ALPHA = 0.3  # 지수가중이동평균 스무딩 계수
+AIM_BUFFER_SIZE = 5  # 반동 발사용 좌표 버퍼
 
 # ── 색상 ──
 COLOR_BG = (15, 15, 25)

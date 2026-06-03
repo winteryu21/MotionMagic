@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from pathlib import Path
 
 import math
 import time
@@ -46,6 +47,24 @@ class Hud:
         self.reward_small_font = get_font(18)
         self.reward_desc_font = get_font(17)
         self.reward_tiny_font = get_font(15)
+        self.gesture_icons = self._load_gesture_icons()
+
+    def _load_gesture_icons(self) -> dict[str, pygame.Surface]:
+        project_root = Path(__file__).resolve().parents[3]
+        icon_dir = project_root / "assets" / "icons" / "gestures"
+        icon_files = {
+            "scissors": "scissors.png",
+            "rock": "rock.png",
+            "paper": "paper.png",
+        }
+        icons: dict[str, pygame.Surface] = {}
+
+        for gesture, filename in icon_files.items():
+            path = icon_dir / filename
+            if path.exists():
+                icons[gesture] = pygame.image.load(str(path)).convert_alpha()
+
+        return icons
 
     def draw(
         self,
@@ -131,16 +150,20 @@ class Hud:
     def _draw_skill_panel(self, surface: pygame.Surface, player: Player, current_combo: list[str], spells: list[Spell]) -> None:
         x = 320
         y = 26
-        row_w = 275
+        row_w = 238
         row_h = 34
         row_gap = 7
-        combo_x = x + row_w + 12
+        combo_gap = 10
+        combo_area_w = 105
+        col_gap = 22
+        rows_per_col = 3
+        col_w = row_w + combo_gap + combo_area_w + col_gap
 
         now = time.monotonic()
         title = self.tiny_font.render("Skills", True, COLOR_WHITE)
         combo_title = self.tiny_font.render("Combo", True, COLOR_WHITE)
         surface.blit(title, (x + 2, y - 20))
-        surface.blit(combo_title, (combo_x + 2, y - 20))
+        surface.blit(combo_title, (x + row_w + combo_gap + 2, y - 20))
 
         visible_spells = [spell for spell in spells if spell.is_unlocked()]
         if not visible_spells:
@@ -149,7 +172,12 @@ class Hud:
             return
 
         for index, spell in enumerate(visible_spells):
-            row_y = y + index * (row_h + row_gap)
+            col = index // rows_per_col
+            row = index % rows_per_col
+            base_x = x + col * col_w
+            row_y = y + row * (row_h + row_gap)
+            combo_x = base_x + row_w + combo_gap
+
             possible = (not current_combo) or spell.combo[: len(current_combo)] == tuple(current_combo)
             cooldown_left = spell.cooldown_remaining(player, now)
             enough_mana = player.mana >= spell.stat.mana_cost
@@ -164,12 +192,20 @@ class Hud:
                 border = (45, 34, 55)
                 text_color = (105, 108, 125)
 
-            rect = pygame.Rect(x, row_y, row_w, row_h)
+            rect = pygame.Rect(base_x, row_y, row_w, row_h)
             pygame.draw.rect(surface, fill, rect, border_radius=7)
             pygame.draw.rect(surface, border, rect, 2, border_radius=7)
 
             label_text = f"{spell.name} Lv.{spell.level}  ({int(spell.stat.mana_cost)} MP)"
             label = self.tiny_font.render(label_text, True, text_color)
+            max_label_w = row_w - 72
+            if label.get_width() > max_label_w:
+                short_text = f"{spell.name} Lv.{spell.level}"
+                label = self.tiny_font.render(short_text, True, text_color)
+                if label.get_width() > max_label_w:
+                    while len(short_text) > 4 and label.get_width() > max_label_w:
+                        short_text = short_text[:-2]
+                        label = self.tiny_font.render(short_text + "…", True, text_color)
             surface.blit(label, (rect.x + 10, rect.y + 7))
 
             if cooldown_left > 0.0:
@@ -188,19 +224,31 @@ class Hud:
             status = self.tiny_font.render(status_text, True, status_color)
             surface.blit(status, (rect.right - status.get_width() - 10, rect.y + 7))
 
-            gx = combo_x
             remaining = spell.combo[len(current_combo):] if possible and current_combo else spell.combo
+            gx = combo_x
             for gesture in remaining:
-                self._gesture_box(surface, gx, row_y + 4, gesture, 36, 26, dim=not ready and cooldown_left > 0.0)
-                gx += 41
+                self._gesture_box(surface, gx, row_y + 2, gesture, 38, 30, dim=not ready and cooldown_left > 0.0)
+                gx += 42
 
     def _gesture_box(self, surface: pygame.Surface, x: int, y: int, gesture: str, w: int = 50, h: int = 34, dim: bool = False) -> None:
         rect = pygame.Rect(x, y, w, h)
-        fill = GESTURE_COLORS.get(gesture, (36, 41, 58))
-        if dim:
-            fill = tuple(max(0, int(value * 0.35)) for value in fill)
-        pygame.draw.rect(surface, fill, rect, border_radius=7)
-        pygame.draw.rect(surface, COLOR_MUTED, rect, 1, border_radius=7)
+        glow = GESTURE_COLORS.get(gesture, (100, 220, 255))
+        fill = (8, 10, 14) if dim else (14, 18, 25)
+        border = (40, 45, 52) if dim else tuple(min(255, int(v * 0.85)) for v in glow)
+
+        pygame.draw.rect(surface, fill, rect, border_radius=4)
+        pygame.draw.rect(surface, border, rect, 1, border_radius=4)
+
+        icon = self.gesture_icons.get(gesture)
+        if icon is not None:
+            icon_size = min(rect.w - 2, rect.h - 2)
+            icon_image = pygame.transform.smoothscale(icon, (icon_size, icon_size))
+            if dim:
+                icon_image = icon_image.copy()
+                icon_image.set_alpha(125)
+            surface.blit(icon_image, icon_image.get_rect(center=rect.center))
+            return
+
         text = self.tiny_font.render(GESTURE_KR.get(gesture, gesture), True, COLOR_WHITE if not dim else (120, 124, 138))
         surface.blit(text, (x + rect.w // 2 - text.get_width() // 2, y + rect.h // 2 - text.get_height() // 2))
 

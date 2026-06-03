@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import pygame
 
+from src.bridge.gesture_event import GestureEvent
+from src.game.gesture_input import screen_pos_from_gesture_event
 from src.game.settings import COLOR_MUTED, COLOR_WHITE, SCREEN_HEIGHT, SCREEN_WIDTH
 from src.game.ui.fonts import get_font
 
@@ -18,7 +20,12 @@ class ExplainScene:
         self.title_font = get_font(44, bold=True)
         self.font = get_font(25)
         self.small_font = get_font(20)
-        self.start_button = pygame.Rect(SCREEN_WIDTH // 2 - 135, SCREEN_HEIGHT - 135, 270, 62)
+        self.start_button = pygame.Rect(
+            SCREEN_WIDTH // 2 - 135,
+            SCREEN_HEIGHT - 135,
+            270,
+            62,
+        )
         self.lines = [
             "Q / W / E : 가위 / 바위 / 보 제스처 입력",
             "마우스 이동 : 조준점 이동",
@@ -30,11 +37,25 @@ class ExplainScene:
         ]
 
     def handle_event(self, event: pygame.event.Event) -> None:
-        if event.type == pygame.KEYDOWN and event.key in (pygame.K_RETURN, pygame.K_SPACE):
+        if event.type == pygame.KEYDOWN and event.key in (
+            pygame.K_RETURN,
+            pygame.K_SPACE,
+        ):
             self.next_scene = "battle"
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.start_button.collidepoint(event.pos):
                 self.next_scene = "battle"
+
+    def handle_gesture_event(self, event: GestureEvent) -> None:
+        """오른손 제스처 커서로 전투 시작 버튼을 선택한다.
+
+        Args:
+            event: bridge 계층에서 전달된 제스처 이벤트.
+        """
+        if event.kind == "fire" and self.start_button.collidepoint(
+            screen_pos_from_gesture_event(event)
+        ):
+            self.next_scene = "battle"
 
     def update(self, dt: float) -> None:
         return
@@ -58,5 +79,10 @@ class ExplainScene:
         label = self.font.render("전투 시작", True, COLOR_WHITE)
         surface.blit(label, label.get_rect(center=self.start_button.center))
 
-        guide = self.small_font.render("Enter / Space 또는 버튼 클릭", True, COLOR_MUTED)
-        surface.blit(guide, guide.get_rect(center=(SCREEN_WIDTH // 2, self.start_button.bottom + 30)))
+        guide = self.small_font.render(
+            "Enter / Space 또는 버튼 클릭", True, COLOR_MUTED
+        )
+        surface.blit(
+            guide,
+            guide.get_rect(center=(SCREEN_WIDTH // 2, self.start_button.bottom + 30)),
+        )

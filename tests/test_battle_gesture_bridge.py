@@ -16,6 +16,7 @@ from src.game.settings import (
     SCREEN_WIDTH,
     SPECIAL_GESTURE_HOLD_GRACE_SECONDS,
 )
+from src.game.systems.magic import MagicSystem
 
 
 class _MagicStub:
@@ -23,6 +24,7 @@ class _MagicStub:
 
     def __init__(self) -> None:
         self.calls: list[dict[str, object]] = []
+        self.response = "시전됨"
 
     def cast_by_combo(
         self,
@@ -45,7 +47,7 @@ class _MagicStub:
                 "origin_pos": origin_pos,
             }
         )
-        return "시전됨"
+        return self.response
 
 
 class _PlayerStub:
@@ -65,9 +67,21 @@ class _FieldStub:
 
     player_pos = (11, 22)
 
+    def __init__(self) -> None:
+        self.enemies: list[_EnemyStub] = []
+
     def update(self, dt: float, player: object) -> int:
         """Return zero defeated enemies."""
         return 0
+
+
+class _EnemyStub:
+    """Minimal enemy test double."""
+
+    def __init__(self, x: float, y: float, alive: bool = True) -> None:
+        self.x = x
+        self.y = y
+        self.alive = alive
 
 
 class _PressedKeysStub:
@@ -88,6 +102,8 @@ def _scene_stub() -> BattleScene:
     scene.aim_pos = (0, 0)
     scene.message = ""
     scene.message_timer = 0.0
+    scene.debug_notice_text = ""
+    scene.debug_notice_timer = 0.0
     scene.special_hold_gesture = None
     scene.special_hold_timer = 0.0
     scene.player = _PlayerStub()
@@ -99,7 +115,8 @@ def _scene_stub() -> BattleScene:
     )
     scene.magic = _MagicStub()
     scene.player_cast_frames = []
-    scene.player_cast_timer = 0.0
+    scene.player_cast_timers = [0.0, 0.0]
+    scene.player_cast_frame_time = 0.06
     scene.player_cast_total_time = 0.0
     return scene
 
@@ -120,6 +137,32 @@ def test_battle_scene_maps_aim_event_to_screen_coordinates() -> None:
     )
 
     assert scene.aim_pos == (round(SCREEN_WIDTH * 0.25), round(SCREEN_HEIGHT * 0.75))
+
+
+def test_battle_scene_keeps_aim_event_at_raw_position_with_enemies() -> None:
+    """Aim events should keep the visible crosshair at the raw aim position."""
+    scene = _scene_stub()
+    scene.active_field.enemies = [
+        _EnemyStub(900.0, 600.0),
+        _EnemyStub(310.0, 220.0),
+        _EnemyStub(250.0, 180.0, alive=False),
+    ]
+
+    scene.handle_gesture_event(
+        GestureEvent(
+            gesture="aim",
+            confidence=0.9,
+            aim_x=0.25,
+            aim_y=0.30,
+            kind="aim",
+            channel="right",
+        )
+    )
+
+    assert scene.aim_pos == (
+        round(SCREEN_WIDTH * 0.25),
+        round(SCREEN_HEIGHT * 0.30),
+    )
 
 
 def test_battle_scene_pushes_stack_gesture_from_bridge_event() -> None:
@@ -169,30 +212,105 @@ def test_battle_scene_casts_current_combo_from_fire_event() -> None:
     assert scene.current_combo == []
 
 
-def test_battle_scene_updates_ui_aim_without_warping_os_mouse(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    """Gesture UI control should move the internal aim point only."""
+def test_battle_scene_casts_fire_event_at_nearest_enemy() -> None:
+    """Fire events should assist only the spell target, not the crosshair."""
     scene = _scene_stub()
-    scene.reward_pending = True
-
-    def fail_set_pos(pos: tuple[int, int]) -> None:
-        raise AssertionError(f"unexpected OS mouse warp: {pos}")
-
-    monkeypatch.setattr(pygame.mouse, "set_pos", fail_set_pos)
+    scene.current_combo = [GESTURE_ROCK]
+    scene.active_field.enemies = [
+        _EnemyStub(900.0, 600.0),
+        _EnemyStub(255.0, 210.0),
+    ]
 
     scene.handle_gesture_event(
         GestureEvent(
-            gesture="aim",
+            gesture="fire",
             confidence=0.9,
-            aim_x=0.4,
-            aim_y=0.6,
-            kind="aim",
+            aim_x=0.2,
+            aim_y=0.3,
+            kind="fire",
             channel="right",
         )
     )
 
-    assert scene.aim_pos == (round(SCREEN_WIDTH * 0.4), round(SCREEN_HEIGHT * 0.6))
+    magic = scene.magic
+    assert isinstance(magic, _MagicStub)
+    assert magic.calls[0]["aim_pos"] == (255, 210)
+    assert scene.aim_pos == (
+        round(SCREEN_WIDTH * 0.2),
+        round(SCREEN_HEIGHT * 0.3),
+    )
+
+
+def test_battle_scene_starts_cast_animation_only_on_active_field() -> None:
+    """Casting should animate only the field where the spell was cast."""
+    scene = _scene_stub()
+    scene.current_combo = [GESTURE_ROCK]
+    scene.magic.response = "마법 Lv.1"
+    scene.player_cast_frames = [pygame.Surface((1, 1))]
+    scene.player_cast_total_time = 0.3
+    scene.active_field_index = 1
+
+    scene.handle_gesture_event(
+        GestureEvent(
+            gesture="fire",
+            confidence=0.9,
+            aim_x=0.2,
+            aim_y=0.3,
+            kind="fire",
+            channel="right",
+        )
+    )
+
+    assert scene.player_cast_timers == [0.0, 0.3]
+
+
+def test_battle_scene_player_image_uses_each_field_cast_timer() -> None:
+    """Player sprites should be selected from each field's own cast timer."""
+    scene = _scene_stub()
+    idle_image = pygame.Surface((1, 1))
+    cast_image = pygame.Surface((1, 1))
+    scene.player_idle_image = idle_image
+    scene.player_cast_frames = [cast_image]
+    scene.player_cast_timers = [0.0, 0.3]
+    scene.player_cast_total_time = 0.3
+
+    assert scene._current_player_image(0) is idle_image
+    assert scene._current_player_image(1) is cast_image
+
+
+def test_battle_scene_keeps_crosshair_raw_during_update(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """Battle updates should not attach the crosshair to a moving enemy."""
+    scene = _scene_stub()
+    monkeypatch.setattr(pygame.key, "get_pressed", lambda: _PressedKeysStub())
+    enemy = _EnemyStub(410.0, 250.0)
+    scene.active_field.enemies = [enemy]
+    scene.aim_pos = (400, 240)
+
+    scene.update(0.1)
+    assert scene.aim_pos == (400, 240)
+
+    enemy.x = 430.0
+    enemy.y = 260.0
+    scene.update(0.1)
+
+    assert scene.aim_pos == (400, 240)
+
+
+def test_battle_scene_debug_u_unlocks_all_spells() -> None:
+    """U should unlock every spell and show the centered debug notice."""
+    scene = _scene_stub()
+    scene.magic = MagicSystem()
+    locked_count = len(scene.magic.locked_spells())
+
+    scene.handle_event(pygame.event.Event(pygame.KEYDOWN, {"key": pygame.K_u}))
+
+    assert locked_count > 0
+    assert scene.magic.locked_spells() == []
+    assert scene.debug_notice_text == "디버그 모드: 모든 마법 언락"
+    assert scene.debug_notice_timer > 0.0
+    assert "디버그 모드: 모든 마법 언락" in scene.message
 
 
 def test_battle_scene_reports_special_gesture_without_casting() -> None:

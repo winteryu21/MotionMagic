@@ -119,7 +119,7 @@ class App:
                 self.running = False
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 self.running = False
-            elif event.type == pygame.KEYDOWN and event.key == pygame.K_F3:
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_i:
                 self.debug_camera_overlay = not self.debug_camera_overlay
             else:
                 self.scene.handle_event(event)

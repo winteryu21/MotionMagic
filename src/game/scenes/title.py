@@ -63,7 +63,7 @@ class TitleScene:
         return
 
     def draw(self, surface: pygame.Surface) -> None:
-        title = self.title_font.render("motion-maigc", True, COLOR_WHITE)
+        title = self.title_font.render("motion-magic", True, COLOR_WHITE)
         title_rect = title.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 80))
         surface.blit(title, title_rect)
 

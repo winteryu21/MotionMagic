@@ -2,13 +2,19 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
-import math
 
 import pygame
 
-from src.game.settings import COLOR_ENEMY, COLOR_ENEMY_FAST, COLOR_ENEMY_TANK, COLOR_HUD_HP, COLOR_STUN
+from src.game.settings import (
+    COLOR_ENEMY,
+    COLOR_ENEMY_FAST,
+    COLOR_ENEMY_TANK,
+    COLOR_HUD_HP,
+    COLOR_STUN,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,7 +35,7 @@ ENEMY_STATS: dict[str, EnemyStat] = {
         key="normal",
         display_name="일반 적",
         hp=40.0,
-        speed=62.0,
+        speed=31.0,
         siege_damage=8.0,
         size=28,
         defense_rate=0.0,
@@ -38,7 +44,7 @@ ENEMY_STATS: dict[str, EnemyStat] = {
         key="fast",
         display_name="빠른 적",
         hp=24.0,
-        speed=108.0,
+        speed=54.0,
         siege_damage=6.0,
         size=22,
         defense_rate=0.0,
@@ -47,7 +53,7 @@ ENEMY_STATS: dict[str, EnemyStat] = {
         key="tank",
         display_name="탱커 적",
         hp=95.0,
-        speed=36.0,
+        speed=18.0,
         siege_damage=16.0,
         size=42,
         defense_rate=0.10,
@@ -72,7 +78,13 @@ def _load_enemy_sprite_frames(enemy_type: str) -> list[pygame.Surface]:
         return _ENEMY_SPRITE_CACHE[enemy_type]
 
     project_root = Path(__file__).resolve().parents[3]
-    sprite_path = project_root / "assets" / "sprites" / "enemies" / f"slime_{enemy_type}_walk_96.png"
+    sprite_path = (
+        project_root
+        / "assets"
+        / "sprites"
+        / "enemies"
+        / f"slime_{enemy_type}_walk_96.png"
+    )
     frames: list[pygame.Surface] = []
 
     if sprite_path.exists():
@@ -112,7 +124,7 @@ class Enemy:
         y: float,
         field_index: int = 0,
         advance_direction: int = -1,
-    ) -> "Enemy":
+    ) -> Enemy:
         stat = ENEMY_STATS[enemy_type]
         return cls(
             x=x,
@@ -216,15 +228,31 @@ class Enemy:
                 color = COLOR_ENEMY
             if not active:
                 color = tuple(max(0, c // 2) for c in color)
-            pygame.draw.circle(surface, color, (int(self.x), int(self.y)), self.size // 2)
+            pygame.draw.circle(
+                surface,
+                color,
+                (int(self.x), int(self.y)),
+                self.size // 2,
+            )
 
         if self.stunned:
-            pygame.draw.circle(surface, COLOR_STUN, (int(self.x), int(self.y)), self.size // 2 + 4, 2)
+            pygame.draw.circle(
+                surface,
+                COLOR_STUN,
+                (int(self.x), int(self.y)),
+                self.size // 2 + 4,
+                2,
+            )
 
         bar_w = self.size + 12
         bar_h = 5
         ratio = max(0.0, min(1.0, self.hp / self.max_hp))
-        bg = pygame.Rect(int(self.x - bar_w / 2), int(self.y + self.size / 2 + 4), bar_w, bar_h)
+        bg = pygame.Rect(
+            int(self.x - bar_w / 2),
+            int(self.y + self.size / 2 + 4),
+            bar_w,
+            bar_h,
+        )
         fg = pygame.Rect(bg.x, bg.y, int(bar_w * ratio), bar_h)
         pygame.draw.rect(surface, (60, 60, 70), bg)
         pygame.draw.rect(surface, COLOR_HUD_HP, fg)

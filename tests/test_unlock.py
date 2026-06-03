@@ -39,3 +39,15 @@ def test_meteor_combo_can_be_recognized_after_unlock() -> None:
 
     assert spell is not None
     assert spell.key == "meteor"
+
+
+def test_magic_system_unlock_all_spells_unlocks_every_locked_spell() -> None:
+    """Debug unlock should unlock every spell exactly once."""
+    magic = MagicSystem()
+    initially_locked = len(magic.locked_spells())
+
+    unlocked_count = magic.unlock_all_spells()
+
+    assert unlocked_count == initially_locked
+    assert magic.locked_spells() == []
+    assert magic.unlock_all_spells() == 0

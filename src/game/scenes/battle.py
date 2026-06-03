@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -22,9 +23,15 @@ from src.game.settings import (
     BASE_LINE_X,
     BATTLE_BACKGROUND_FILES,
     COLOR_BASE,
+    COLOR_DEBUG_NOTICE_BG,
     COLOR_FIELD_BG,
     COLOR_INACTIVE_FIELD_BG,
+    COLOR_MUTED,
     COLOR_WHITE,
+    DEBUG_NOTICE_BORDER_RADIUS,
+    DEBUG_NOTICE_DURATION_SECONDS,
+    DEBUG_NOTICE_PADDING_X,
+    DEBUG_NOTICE_PADDING_Y,
     GESTURE_COMBO_SIZE,
     GESTURE_PAPER,
     GESTURE_ROCK,
@@ -54,6 +61,7 @@ SPECIAL_GESTURE_DISPLAY_NAMES = {
     "clasp": "다이아몬드",
     "sonaldo": "손흥민 시그니처",
 }
+DEBUG_UNLOCK_ALL_SPELLS_NOTICE = "디버그 모드: 모든 마법 언락"
 
 
 @dataclass(slots=True)
@@ -185,6 +193,9 @@ class BattleScene:
         self.aim_pos = (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
         self.message = ""
         self.message_timer = 0.0
+        self.debug_notice_text = ""
+        self.debug_notice_timer = 0.0
+        self.debug_notice_font = get_font(34, bold=True)
         self.special_hold_gesture: str | None = None
         self.special_hold_timer = 0.0
         self.reward_pending = False
@@ -193,7 +204,7 @@ class BattleScene:
         self.result_cleared_stage = 0
         self.game_over = False
         self.player_idle_image, self.player_cast_frames = self._load_player_sprites()
-        self.player_cast_timer = 0.0
+        self.player_cast_timers = [0.0 for _ in range(NUM_FIELDS)]
         self.player_cast_frame_time = 0.06
         self.player_cast_total_time = self.player_cast_frame_time * max(
             1, len(self.player_cast_frames)
@@ -241,9 +252,10 @@ class BattleScene:
 
         return idle_image, cast_frames
 
-    def _current_player_image(self) -> pygame.Surface | None:
-        if self.player_cast_timer > 0.0 and self.player_cast_frames:
-            elapsed = self.player_cast_total_time - self.player_cast_timer
+    def _current_player_image(self, field_index: int) -> pygame.Surface | None:
+        timer = self.player_cast_timers[field_index]
+        if timer > 0.0 and self.player_cast_frames:
+            elapsed = self.player_cast_total_time - timer
             frame_index = min(
                 len(self.player_cast_frames) - 1,
                 int(elapsed / self.player_cast_frame_time),
@@ -251,9 +263,9 @@ class BattleScene:
             return self.player_cast_frames[frame_index]
         return self.player_idle_image
 
-    def _start_player_cast_animation(self) -> None:
+    def _start_player_cast_animation(self, field_index: int) -> None:
         if self.player_cast_frames:
-            self.player_cast_timer = self.player_cast_total_time
+            self.player_cast_timers[field_index] = self.player_cast_total_time
 
     @property
     def active_field(self) -> BattleField:
@@ -265,6 +277,10 @@ class BattleScene:
         return alive + self.spawner.remaining_to_spawn
 
     def handle_event(self, event: pygame.event.Event) -> None:
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_u:
+            self._unlock_all_spells_for_debug()
+            return
+
         if self.unlock_scene.pending:
             self._handle_unlock_event(event)
             return
@@ -328,19 +344,44 @@ class BattleScene:
             self._handle_reward_event(click_event)
 
     def _cast_current_combo(self, aim_pos: tuple[int, int]) -> None:
+        cast_field_index = self.active_field_index
         self.aim_pos = aim_pos
+        cast_aim_pos = self._assist_aim_to_nearest_enemy(aim_pos)
         self.message = self.magic.cast_by_combo(
             self.current_combo,
             self.player,
             self.active_field,
-            self.aim_pos,
+            cast_aim_pos,
             fields=self.fields,
             origin_pos=self.active_field.player_pos,
         )
         if "Lv." in self.message:
-            self._start_player_cast_animation()
+            self._start_player_cast_animation(cast_field_index)
         self.message_timer = 1.4
         self.current_combo.clear()
+
+    def _assist_aim_to_nearest_enemy(
+        self,
+        aim_pos: tuple[int, int],
+    ) -> tuple[int, int]:
+        """Return the nearest alive enemy position for spell targeting.
+
+        Args:
+            aim_pos: Raw screen coordinate from mouse or gesture input.
+
+        Returns:
+            The nearest alive enemy center in the active field, or ``aim_pos`` when
+            no valid target exists. This does not mutate the visible crosshair.
+        """
+        alive_enemies = [enemy for enemy in self.active_field.enemies if enemy.alive]
+        if not alive_enemies:
+            return aim_pos
+
+        target = min(
+            alive_enemies,
+            key=lambda enemy: math.hypot(enemy.x - aim_pos[0], enemy.y - aim_pos[1]),
+        )
+        return (round(target.x), round(target.y))
 
     def _handle_special_gesture(self, event: GestureEvent) -> None:
         is_new_hold = (
@@ -373,6 +414,14 @@ class BattleScene:
             GESTURE_DISPLAY_NAMES.get(g, g) for g in self.current_combo
         )
         self.message_timer = 1.2
+
+    def _unlock_all_spells_for_debug(self) -> None:
+        newly_unlocked = self.magic.unlock_all_spells()
+        suffix = f" ({newly_unlocked}개 신규)" if newly_unlocked > 0 else ""
+        self.debug_notice_text = DEBUG_UNLOCK_ALL_SPELLS_NOTICE
+        self.debug_notice_timer = DEBUG_NOTICE_DURATION_SECONDS
+        self.message = f"{DEBUG_UNLOCK_ALL_SPELLS_NOTICE}{suffix}"
+        self.message_timer = DEBUG_NOTICE_DURATION_SECONDS
 
     def _handle_unlock_event(self, event: pygame.event.Event) -> None:
         if event.type == pygame.KEYDOWN and event.key in (
@@ -443,7 +492,10 @@ class BattleScene:
         self.next_scene = "result"
 
     def update(self, dt: float) -> None:
-        self.player_cast_timer = max(0.0, self.player_cast_timer - dt)
+        self.player_cast_timers = [
+            max(0.0, timer - dt) for timer in self.player_cast_timers
+        ]
+        self.debug_notice_timer = max(0.0, self.debug_notice_timer - dt)
         self._update_special_hold(dt)
 
         if self.unlock_scene.pending:
@@ -487,7 +539,7 @@ class BattleScene:
         return self.special_hold_gesture == gesture and self.special_hold_timer > 0.0
 
     def draw(self, surface: pygame.Surface) -> None:
-        player_image = self._current_player_image()
+        player_image = self._current_player_image(self.active_field_index)
         self.active_field.draw(surface, active=True, player_image=player_image)
         self._draw_inactive_field_minimap(surface)
         self.hud.draw(
@@ -510,6 +562,42 @@ class BattleScene:
                 self.unlock_scene.demo_field,
             )
         self.crosshair.draw(surface, self.aim_pos)
+        self._draw_debug_notice(surface)
+
+    def _draw_debug_notice(self, surface: pygame.Surface) -> None:
+        if self.debug_notice_timer <= 0.0 or not self.debug_notice_text:
+            return
+
+        text = self.debug_notice_font.render(
+            self.debug_notice_text,
+            True,
+            COLOR_WHITE,
+        )
+        panel = pygame.Rect(
+            0,
+            0,
+            text.get_width() + DEBUG_NOTICE_PADDING_X * 2,
+            text.get_height() + DEBUG_NOTICE_PADDING_Y * 2,
+        )
+        panel.center = (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
+
+        overlay = pygame.Surface(panel.size, pygame.SRCALPHA)
+        overlay_rect = overlay.get_rect()
+        pygame.draw.rect(
+            overlay,
+            COLOR_DEBUG_NOTICE_BG,
+            overlay_rect,
+            border_radius=DEBUG_NOTICE_BORDER_RADIUS,
+        )
+        pygame.draw.rect(
+            overlay,
+            COLOR_MUTED,
+            overlay_rect,
+            1,
+            border_radius=DEBUG_NOTICE_BORDER_RADIUS,
+        )
+        overlay.blit(text, (DEBUG_NOTICE_PADDING_X, DEBUG_NOTICE_PADDING_Y))
+        surface.blit(overlay, panel)
 
     def _draw_inactive_field_minimap(self, surface: pygame.Surface) -> None:
         mini_w, mini_h = 320, 180  # 16:9 비율 유지 (1920x1080 / 6)
@@ -520,7 +608,9 @@ class BattleScene:
         # 반대편 전장을 임시 서페이스에 그대로 렌더링
         temp_surface = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
         inactive.draw(
-            temp_surface, active=False, player_image=self._current_player_image()
+            temp_surface,
+            active=False,
+            player_image=self._current_player_image(inactive_index),
         )
 
         # 렌더링된 전장을 미니맵 크기로 축소

@@ -12,7 +12,7 @@ if find_spec("pygame") is None:
     sys.modules["pygame"] = ModuleType("pygame")
 
 from src.game.entities.enemy import Enemy
-from src.game.entities.projectile import MagicMissile
+from src.game.entities.projectile import LightningStrike, MagicMissile
 from src.game.systems.combat import CombatSystem
 
 
@@ -51,3 +51,20 @@ def test_combat_system_does_not_apply_magic_missile_damage() -> None:
     CombatSystem.update_projectile_collisions(field)
 
     assert target.hp == pytest.approx(30.0)
+
+
+def test_lightning_strike_reveals_chain_segments_over_time() -> None:
+    """Chain lightning visual segments should appear one by one."""
+    strike = LightningStrike(
+        [(0, 0), (10, 0), (20, 0), (30, 0)],
+        damage=10.0,
+        segment_delay=0.06,
+    )
+
+    assert strike._visible_segment_count() == 1
+
+    strike.update(0.06, [])
+    assert strike._visible_segment_count() == 2
+
+    strike.update(0.06, [])
+    assert strike._visible_segment_count() == 3

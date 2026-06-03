@@ -7,6 +7,10 @@ import sys
 
 import pygame
 
+from src.game.scenes.battle import BattleScene
+from src.game.scenes.explain import ExplainScene
+from src.game.scenes.result import ResultScene
+from src.game.scenes.title import TitleScene
 from src.game.settings import COLOR_BG, FPS, SCREEN_HEIGHT, SCREEN_WIDTH, TITLE
 
 logger = logging.getLogger(__name__)
@@ -21,6 +25,8 @@ class App:
         pygame.display.set_caption(TITLE)
         self.clock = pygame.time.Clock()
         self.running = True
+        self.scene = TitleScene()
+        self._sync_mouse_visibility()
 
         logger.info("MotionMagic 초기화 완료 (%dx%d)", SCREEN_WIDTH, SCREEN_HEIGHT)
 
@@ -42,18 +48,38 @@ class App:
                 self.running = False
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 self.running = False
+            else:
+                self.scene.handle_event(event)
 
     def _update(self, dt: float) -> None:
-        """게임 상태 업데이트.
-
-        Args:
-            dt: 이전 프레임으로부터 경과된 시간(초).
-        """
+        self.scene.update(dt)
+        self._change_scene_if_needed()
 
     def _draw(self) -> None:
-        """화면 렌더링."""
         self.screen.fill(COLOR_BG)
+        self.scene.draw(self.screen)
         pygame.display.flip()
+
+    def _change_scene_if_needed(self) -> None:
+        next_scene = getattr(self.scene, "next_scene", None)
+        if next_scene is None:
+            return
+
+        if next_scene == "title":
+            self.scene = TitleScene()
+        elif next_scene == "explain":
+            self.scene = ExplainScene()
+        elif next_scene == "battle":
+            self.scene = BattleScene()
+        elif next_scene == "result":
+            cleared_stage = int(getattr(self.scene, "result_cleared_stage", 0))
+            self.scene = ResultScene(cleared_stage)
+        else:
+            raise ValueError(f"알 수 없는 씬 이름입니다: {next_scene}")
+        self._sync_mouse_visibility()
+
+    def _sync_mouse_visibility(self) -> None:
+        pygame.mouse.set_visible(bool(getattr(self.scene, "mouse_visible", False)))
 
 
 def main() -> None:

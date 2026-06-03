@@ -16,6 +16,7 @@ from src.game.entities.projectile import (
     MagicMissile,
     Meteor,
 )
+from src.game.gesture_input import screen_pos_from_gesture_event
 from src.game.scenes.unlock import UnlockScene
 from src.game.settings import (
     BASE_LINE_X,
@@ -33,6 +34,7 @@ from src.game.settings import (
     PLAYER_Y,
     SCREEN_HEIGHT,
     SCREEN_WIDTH,
+    SPECIAL_GESTURE_HOLD_GRACE_SECONDS,
 )
 from src.game.systems.combat import CombatSystem
 from src.game.systems.magic import MagicSystem
@@ -183,6 +185,8 @@ class BattleScene:
         self.aim_pos = (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
         self.message = ""
         self.message_timer = 0.0
+        self.special_hold_gesture: str | None = None
+        self.special_hold_timer = 0.0
         self.reward_pending = False
         self.unlock_scene = UnlockScene()
         self.next_scene: str | None = None
@@ -271,11 +275,7 @@ class BattleScene:
 
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_TAB:
-                self.active_field_index = (self.active_field_index + 1) % len(
-                    self.fields
-                )
-                self.message = f"전장 {self.active_field_index + 1}로 전환"
-                self.message_timer = 1.2
+                self._switch_active_field()
             elif event.key == pygame.K_q:
                 self._push_gesture(GESTURE_SCISSORS)
             elif event.key == pygame.K_w:
@@ -293,28 +293,39 @@ class BattleScene:
         Args:
             event: bridge 계층에서 전달된 제스처 이벤트.
         """
-        if self._blocks_battle_input():
+        if self.unlock_scene.pending or self.reward_pending:
+            self._handle_gesture_ui_event(event)
+            return
+
+        if self.game_over:
             return
 
         if event.kind == "stack" and event.gesture in STACK_GESTURES:
             self._push_gesture(event.gesture)
         elif event.kind == "aim":
-            self.aim_pos = self._screen_pos_from_gesture_event(event)
+            self.aim_pos = screen_pos_from_gesture_event(event)
         elif event.kind == "fire":
-            self._cast_current_combo(self._screen_pos_from_gesture_event(event))
+            self._cast_current_combo(screen_pos_from_gesture_event(event))
         elif event.kind == "special":
             self._handle_special_gesture(event)
 
-    def _blocks_battle_input(self) -> bool:
-        return self.unlock_scene.pending or self.reward_pending or self.game_over
+    def _handle_gesture_ui_event(self, event: GestureEvent) -> None:
+        if event.kind not in {"aim", "fire"}:
+            return
 
-    def _screen_pos_from_gesture_event(self, event: GestureEvent) -> tuple[int, int]:
-        x = round(event.aim_x * SCREEN_WIDTH)
-        y = round(event.aim_y * SCREEN_HEIGHT)
-        return (
-            max(0, min(SCREEN_WIDTH - 1, x)),
-            max(0, min(SCREEN_HEIGHT - 1, y)),
+        pos = screen_pos_from_gesture_event(event)
+        pygame.mouse.set_pos(pos)
+        if event.kind != "fire":
+            return
+
+        click_event = pygame.event.Event(
+            pygame.MOUSEBUTTONDOWN,
+            {"button": 1, "pos": pos},
         )
+        if self.unlock_scene.pending:
+            self._handle_unlock_event(click_event)
+        elif self.reward_pending:
+            self._handle_reward_event(click_event)
 
     def _cast_current_combo(self, aim_pos: tuple[int, int]) -> None:
         self.aim_pos = aim_pos
@@ -332,8 +343,26 @@ class BattleScene:
         self.current_combo.clear()
 
     def _handle_special_gesture(self, event: GestureEvent) -> None:
+        is_new_hold = (
+            self.special_hold_gesture != event.gesture or self.special_hold_timer <= 0.0
+        )
+        self.special_hold_gesture = event.gesture
+        self.special_hold_timer = SPECIAL_GESTURE_HOLD_GRACE_SECONDS
+
         gesture_name = SPECIAL_GESTURE_DISPLAY_NAMES.get(event.gesture, event.gesture)
-        self.message = f"특수 제스처: {gesture_name}"
+        if event.gesture == "clasp":
+            self.message = f"마나 충전: {gesture_name}"
+            self.message_timer = 0.4
+        elif event.gesture == "sonaldo" and is_new_hold:
+            self._switch_active_field(prefix=gesture_name)
+        else:
+            self.message = f"특수 제스처: {gesture_name}"
+            self.message_timer = 0.4
+
+    def _switch_active_field(self, prefix: str | None = None) -> None:
+        self.active_field_index = (self.active_field_index + 1) % len(self.fields)
+        message = f"전장 {self.active_field_index + 1}로 전환"
+        self.message = f"{prefix}: {message}" if prefix is not None else message
         self.message_timer = 1.2
 
     def _push_gesture(self, gesture: str) -> None:
@@ -419,6 +448,7 @@ class BattleScene:
 
     def update(self, dt: float) -> None:
         self.player_cast_timer = max(0.0, self.player_cast_timer - dt)
+        self._update_special_hold(dt)
 
         if self.unlock_scene.pending:
             self.unlock_scene.update(dt, self.magic)
@@ -430,7 +460,7 @@ class BattleScene:
             return
 
         keys = pygame.key.get_pressed()
-        if keys[pygame.K_SPACE]:
+        if keys[pygame.K_SPACE] or self._is_special_holding("clasp"):
             self.player.charge_mana(dt)
 
         for battle_field in self.fields:
@@ -447,6 +477,18 @@ class BattleScene:
             self._open_reward_selection()
 
         self.message_timer = max(0.0, self.message_timer - dt)
+
+    def _update_special_hold(self, dt: float) -> None:
+        if self.special_hold_timer <= 0.0:
+            self.special_hold_gesture = None
+            return
+
+        self.special_hold_timer = max(0.0, self.special_hold_timer - dt)
+        if self.special_hold_timer <= 0.0:
+            self.special_hold_gesture = None
+
+    def _is_special_holding(self, gesture: str) -> bool:
+        return self.special_hold_gesture == gesture and self.special_hold_timer > 0.0
 
     def draw(self, surface: pygame.Surface) -> None:
         player_image = self._current_player_image()

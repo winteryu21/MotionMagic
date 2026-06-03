@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pygame
 
+from src.bridge.gesture_event import GestureEvent
 from src.game.settings import COLOR_MUTED, COLOR_WHITE, SCREEN_HEIGHT, SCREEN_WIDTH
 from src.game.ui.fonts import get_font
 
@@ -26,19 +27,44 @@ class ResultScene:
         elif event.type == pygame.MOUSEBUTTONDOWN:
             self.next_scene = "title"
 
+    def handle_gesture_event(self, event: GestureEvent) -> None:
+        """오른손 fire 제스처로 타이틀 화면으로 돌아간다.
+
+        Args:
+            event: bridge 계층에서 전달된 제스처 이벤트.
+        """
+        if event.kind == "fire":
+            self.next_scene = "title"
+
     def update(self, dt: float) -> None:
         return
 
     def draw(self, surface: pygame.Surface) -> None:
-        panel = pygame.Rect(SCREEN_WIDTH // 2 - 330, SCREEN_HEIGHT // 2 - 180, 660, 360)
+        panel = pygame.Rect(
+            SCREEN_WIDTH // 2 - 330,
+            SCREEN_HEIGHT // 2 - 180,
+            660,
+            360,
+        )
         pygame.draw.rect(surface, (24, 27, 42), panel, border_radius=24)
         pygame.draw.rect(surface, (120, 70, 80), panel, 3, border_radius=24)
 
         title = self.title_font.render("GAME OVER", True, (255, 110, 105))
         surface.blit(title, title.get_rect(center=(SCREEN_WIDTH // 2, panel.y + 90)))
 
-        stage_text = self.stage_font.render(f"최종 클리어 스테이지 : {self.cleared_stage}", True, COLOR_WHITE)
-        surface.blit(stage_text, stage_text.get_rect(center=(SCREEN_WIDTH // 2, panel.y + 185)))
+        stage_text = self.stage_font.render(
+            f"최종 클리어 스테이지 : {self.cleared_stage}",
+            True,
+            COLOR_WHITE,
+        )
+        surface.blit(
+            stage_text,
+            stage_text.get_rect(center=(SCREEN_WIDTH // 2, panel.y + 185)),
+        )
 
-        guide = self.guide_font.render("아무 키나 누르면 메인 화면으로 돌아감", True, COLOR_MUTED)
+        guide = self.guide_font.render(
+            "아무 키나 누르면 메인 화면으로 돌아감",
+            True,
+            COLOR_MUTED,
+        )
         surface.blit(guide, guide.get_rect(center=(SCREEN_WIDTH // 2, panel.y + 275)))

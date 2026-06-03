@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pygame
+from pytest import MonkeyPatch
+
 from src.bridge.gesture_event import GestureEvent
 from src.game.scenes.battle import BattleScene
 from src.game.settings import (
@@ -11,6 +14,7 @@ from src.game.settings import (
     GESTURE_ROCK,
     SCREEN_HEIGHT,
     SCREEN_WIDTH,
+    SPECIAL_GESTURE_HOLD_GRACE_SECONDS,
 )
 
 
@@ -44,6 +48,36 @@ class _MagicStub:
         return "시전됨"
 
 
+class _PlayerStub:
+    """Minimal Player test double."""
+
+    def __init__(self) -> None:
+        self.charged_seconds = 0.0
+        self.alive = True
+
+    def charge_mana(self, dt: float) -> None:
+        """Record mana charge duration."""
+        self.charged_seconds += dt
+
+
+class _FieldStub:
+    """Minimal BattleField test double."""
+
+    player_pos = (11, 22)
+
+    def update(self, dt: float, player: object) -> int:
+        """Return zero defeated enemies."""
+        return 0
+
+
+class _PressedKeysStub:
+    """pygame.key.get_pressed test double."""
+
+    def __getitem__(self, key: int) -> bool:
+        """Report every key as unpressed."""
+        return False
+
+
 def _scene_stub() -> BattleScene:
     """Create a BattleScene instance without loading pygame assets."""
     scene = object.__new__(BattleScene)
@@ -54,9 +88,15 @@ def _scene_stub() -> BattleScene:
     scene.aim_pos = (0, 0)
     scene.message = ""
     scene.message_timer = 0.0
-    scene.player = object()
-    scene.fields = [SimpleNamespace(player_pos=(11, 22))]
+    scene.special_hold_gesture = None
+    scene.special_hold_timer = 0.0
+    scene.player = _PlayerStub()
+    scene.fields = [_FieldStub(), _FieldStub()]
     scene.active_field_index = 0
+    scene.spawner = SimpleNamespace(
+        record_defeated=lambda defeated: None,
+        update=lambda dt, fields, active_field_index: False,
+    )
     scene.magic = _MagicStub()
     scene.player_cast_frames = []
     scene.player_cast_timer = 0.0
@@ -150,3 +190,51 @@ def test_battle_scene_reports_special_gesture_without_casting() -> None:
     assert magic.calls == []
     assert scene.current_combo == [GESTURE_ROCK]
     assert "다이아몬드" in scene.message
+
+
+def test_battle_scene_charges_mana_while_clasp_is_held(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """Clasp special hold should charge mana during battle updates."""
+    scene = _scene_stub()
+    monkeypatch.setattr(pygame.key, "get_pressed", lambda: _PressedKeysStub())
+
+    scene.handle_gesture_event(
+        GestureEvent(
+            gesture="clasp",
+            confidence=0.9,
+            aim_x=0.5,
+            aim_y=0.5,
+            kind="special",
+            channel="both",
+        )
+    )
+    scene.update(0.1)
+
+    player = scene.player
+    assert isinstance(player, _PlayerStub)
+    assert scene.special_hold_timer == SPECIAL_GESTURE_HOLD_GRACE_SECONDS - 0.1
+    assert player.charged_seconds == 0.1
+
+
+def test_battle_scene_switches_field_once_per_sonaldo_hold() -> None:
+    """Sonaldo should switch fields once until the current hold expires."""
+    scene = _scene_stub()
+    event = GestureEvent(
+        gesture="sonaldo",
+        confidence=0.9,
+        aim_x=0.5,
+        aim_y=0.5,
+        kind="special",
+        channel="both",
+    )
+
+    scene.handle_gesture_event(event)
+    scene.handle_gesture_event(event)
+
+    assert scene.active_field_index == 1
+
+    scene._update_special_hold(SPECIAL_GESTURE_HOLD_GRACE_SECONDS)
+    scene.handle_gesture_event(event)
+
+    assert scene.active_field_index == 0

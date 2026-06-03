@@ -228,6 +228,22 @@ def test_pipeline_emits_clasp_special_and_suppresses_stack() -> None:
     assert events[0].channel == "both"
 
 
+def test_pipeline_repeats_stable_special_event_while_held() -> None:
+    """특수 제스처 유지 중에는 stable special 이벤트를 계속 내보낸다."""
+    pipeline = _pipeline()
+    left_landmarks, right_landmarks = _diamond_landmarks()
+    left = HandObservation("Left", left_landmarks, score=0.9)
+    right = HandObservation("Right", right_landmarks, score=0.8)
+
+    pipeline.update([left, right], timestamp=0.00)
+    pipeline.update([left, right], timestamp=0.01)
+    events = pipeline.update([left, right], timestamp=0.02)
+
+    assert len(events) == 1
+    assert events[0].gesture == "clasp"
+    assert events[0].kind == "special"
+
+
 def test_pipeline_emits_sonaldo_special_and_suppresses_aim() -> None:
     """손흥민 시그니처 특수 모드는 오른손 aim 이벤트로 새지 않는다."""
     pipeline = _pipeline()

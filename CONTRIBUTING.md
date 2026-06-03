@@ -4,10 +4,20 @@
 
 ## 1. 환경 세팅
 
+권장 경로는 프로젝트 루트에서 원클릭 배치 파일을 사용하는 것입니다.
+
+```bat
+setup_env.bat
+run_game.bat
+```
+
+수동 실행이 필요하면 반드시 프로젝트 `.venv`의 Python을 사용합니다.
+
 ```bash
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
+.venv\Scripts\python -m src.game.app
 ```
 
 ## 2. 네이밍 규칙

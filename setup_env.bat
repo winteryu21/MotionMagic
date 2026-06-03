@@ -16,6 +16,10 @@ if %ERRORLEVEL% neq 0 (
 ) else (
     echo.
     echo [성공] 모든 환경 설정이 완료되었습니다!
+    echo.
+    echo 게임 실행: run_game.bat
+    echo 07 진단 실행: run_07_gesture_test.bat
+    echo 웹캠이 안 열리면: run_game.bat 1
 )
 
 echo.

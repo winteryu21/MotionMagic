@@ -169,6 +169,32 @@ def test_battle_scene_casts_current_combo_from_fire_event() -> None:
     assert scene.current_combo == []
 
 
+def test_battle_scene_updates_ui_aim_without_warping_os_mouse(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """Gesture UI control should move the internal aim point only."""
+    scene = _scene_stub()
+    scene.reward_pending = True
+
+    def fail_set_pos(pos: tuple[int, int]) -> None:
+        raise AssertionError(f"unexpected OS mouse warp: {pos}")
+
+    monkeypatch.setattr(pygame.mouse, "set_pos", fail_set_pos)
+
+    scene.handle_gesture_event(
+        GestureEvent(
+            gesture="aim",
+            confidence=0.9,
+            aim_x=0.4,
+            aim_y=0.6,
+            kind="aim",
+            channel="right",
+        )
+    )
+
+    assert scene.aim_pos == (round(SCREEN_WIDTH * 0.4), round(SCREEN_HEIGHT * 0.6))
+
+
 def test_battle_scene_reports_special_gesture_without_casting() -> None:
     """Special events should not consume or cast the current combo yet."""
     scene = _scene_stub()

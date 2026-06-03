@@ -23,6 +23,7 @@ class _MagicStub:
 
     def __init__(self) -> None:
         self.calls: list[dict[str, object]] = []
+        self.response = "시전됨"
 
     def cast_by_combo(
         self,
@@ -45,7 +46,7 @@ class _MagicStub:
                 "origin_pos": origin_pos,
             }
         )
-        return "시전됨"
+        return self.response
 
 
 class _PlayerStub:
@@ -111,7 +112,8 @@ def _scene_stub() -> BattleScene:
     )
     scene.magic = _MagicStub()
     scene.player_cast_frames = []
-    scene.player_cast_timer = 0.0
+    scene.player_cast_timers = [0.0, 0.0]
+    scene.player_cast_frame_time = 0.06
     scene.player_cast_total_time = 0.0
     return scene
 
@@ -228,6 +230,43 @@ def test_battle_scene_casts_fire_event_at_nearest_enemy() -> None:
     assert isinstance(magic, _MagicStub)
     assert magic.calls[0]["aim_pos"] == (255, 210)
     assert scene.aim_pos == (255, 210)
+
+
+def test_battle_scene_starts_cast_animation_only_on_active_field() -> None:
+    """Casting should animate only the field where the spell was cast."""
+    scene = _scene_stub()
+    scene.current_combo = [GESTURE_ROCK]
+    scene.magic.response = "마법 Lv.1"
+    scene.player_cast_frames = [pygame.Surface((1, 1))]
+    scene.player_cast_total_time = 0.3
+    scene.active_field_index = 1
+
+    scene.handle_gesture_event(
+        GestureEvent(
+            gesture="fire",
+            confidence=0.9,
+            aim_x=0.2,
+            aim_y=0.3,
+            kind="fire",
+            channel="right",
+        )
+    )
+
+    assert scene.player_cast_timers == [0.0, 0.3]
+
+
+def test_battle_scene_player_image_uses_each_field_cast_timer() -> None:
+    """Player sprites should be selected from each field's own cast timer."""
+    scene = _scene_stub()
+    idle_image = pygame.Surface((1, 1))
+    cast_image = pygame.Surface((1, 1))
+    scene.player_idle_image = idle_image
+    scene.player_cast_frames = [cast_image]
+    scene.player_cast_timers = [0.0, 0.3]
+    scene.player_cast_total_time = 0.3
+
+    assert scene._current_player_image(0) is idle_image
+    assert scene._current_player_image(1) is cast_image
 
 
 def test_battle_scene_keeps_crosshair_locked_to_moving_enemy(

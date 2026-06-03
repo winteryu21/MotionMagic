@@ -194,7 +194,7 @@ class BattleScene:
         self.result_cleared_stage = 0
         self.game_over = False
         self.player_idle_image, self.player_cast_frames = self._load_player_sprites()
-        self.player_cast_timer = 0.0
+        self.player_cast_timers = [0.0 for _ in range(NUM_FIELDS)]
         self.player_cast_frame_time = 0.06
         self.player_cast_total_time = self.player_cast_frame_time * max(
             1, len(self.player_cast_frames)
@@ -242,9 +242,10 @@ class BattleScene:
 
         return idle_image, cast_frames
 
-    def _current_player_image(self) -> pygame.Surface | None:
-        if self.player_cast_timer > 0.0 and self.player_cast_frames:
-            elapsed = self.player_cast_total_time - self.player_cast_timer
+    def _current_player_image(self, field_index: int) -> pygame.Surface | None:
+        timer = self.player_cast_timers[field_index]
+        if timer > 0.0 and self.player_cast_frames:
+            elapsed = self.player_cast_total_time - timer
             frame_index = min(
                 len(self.player_cast_frames) - 1,
                 int(elapsed / self.player_cast_frame_time),
@@ -252,9 +253,9 @@ class BattleScene:
             return self.player_cast_frames[frame_index]
         return self.player_idle_image
 
-    def _start_player_cast_animation(self) -> None:
+    def _start_player_cast_animation(self, field_index: int) -> None:
         if self.player_cast_frames:
-            self.player_cast_timer = self.player_cast_total_time
+            self.player_cast_timers[field_index] = self.player_cast_total_time
 
     @property
     def active_field(self) -> BattleField:
@@ -331,6 +332,7 @@ class BattleScene:
             self._handle_reward_event(click_event)
 
     def _cast_current_combo(self, aim_pos: tuple[int, int]) -> None:
+        cast_field_index = self.active_field_index
         self.aim_pos = self._snap_aim_to_nearest_enemy(aim_pos)
         self.message = self.magic.cast_by_combo(
             self.current_combo,
@@ -341,7 +343,7 @@ class BattleScene:
             origin_pos=self.active_field.player_pos,
         )
         if "Lv." in self.message:
-            self._start_player_cast_animation()
+            self._start_player_cast_animation(cast_field_index)
         self.message_timer = 1.4
         self.current_combo.clear()
 
@@ -470,7 +472,9 @@ class BattleScene:
         self.next_scene = "result"
 
     def update(self, dt: float) -> None:
-        self.player_cast_timer = max(0.0, self.player_cast_timer - dt)
+        self.player_cast_timers = [
+            max(0.0, timer - dt) for timer in self.player_cast_timers
+        ]
         self._update_special_hold(dt)
 
         if self.unlock_scene.pending:
@@ -515,7 +519,7 @@ class BattleScene:
         return self.special_hold_gesture == gesture and self.special_hold_timer > 0.0
 
     def draw(self, surface: pygame.Surface) -> None:
-        player_image = self._current_player_image()
+        player_image = self._current_player_image(self.active_field_index)
         self.active_field.draw(surface, active=True, player_image=player_image)
         self._draw_inactive_field_minimap(surface)
         self.crosshair.draw(surface, self.aim_pos)
@@ -548,7 +552,9 @@ class BattleScene:
         # 반대편 전장을 임시 서페이스에 그대로 렌더링
         temp_surface = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
         inactive.draw(
-            temp_surface, active=False, player_image=self._current_player_image()
+            temp_surface,
+            active=False,
+            player_image=self._current_player_image(inactive_index),
         )
 
         # 렌더링된 전장을 미니맵 크기로 축소

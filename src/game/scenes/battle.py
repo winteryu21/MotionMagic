@@ -4,18 +4,26 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+
 import pygame
 
+from src.bridge.gesture_event import GestureEvent
 from src.game.entities.enemy import Enemy
 from src.game.entities.player import Player
-from src.game.entities.projectile import Explosion, LightningStrike, MagicMissile, Meteor
+from src.game.entities.projectile import (
+    Explosion,
+    LightningStrike,
+    MagicMissile,
+    Meteor,
+)
+from src.game.gesture_input import screen_pos_from_gesture_event
+from src.game.scenes.unlock import UnlockScene
 from src.game.settings import (
     BASE_LINE_X,
     BATTLE_BACKGROUND_FILES,
     COLOR_BASE,
     COLOR_FIELD_BG,
     COLOR_INACTIVE_FIELD_BG,
-    COLOR_MUTED,
     COLOR_WHITE,
     GESTURE_COMBO_SIZE,
     GESTURE_PAPER,
@@ -26,15 +34,26 @@ from src.game.settings import (
     PLAYER_Y,
     SCREEN_HEIGHT,
     SCREEN_WIDTH,
+    SPECIAL_GESTURE_HOLD_GRACE_SECONDS,
 )
-from src.game.systems.magic import MagicSystem
 from src.game.systems.combat import CombatSystem
+from src.game.systems.magic import MagicSystem
+from src.game.systems.reward import RewardOption, RewardSystem
 from src.game.systems.spawner import WaveSpawner
 from src.game.ui.crosshair import Crosshair
-from src.game.systems.reward import RewardOption, RewardSystem
 from src.game.ui.fonts import get_font
 from src.game.ui.hud import Hud
-from src.game.scenes.unlock import UnlockScene
+
+STACK_GESTURES = frozenset({GESTURE_SCISSORS, GESTURE_ROCK, GESTURE_PAPER})
+GESTURE_DISPLAY_NAMES = {
+    GESTURE_SCISSORS: "가위",
+    GESTURE_ROCK: "바위",
+    GESTURE_PAPER: "보",
+}
+SPECIAL_GESTURE_DISPLAY_NAMES = {
+    "clasp": "다이아몬드",
+    "sonaldo": "손흥민 시그니처",
+}
 
 
 @dataclass(slots=True)
@@ -44,6 +63,7 @@ class BattleField:
     enemies: list[Enemy] = field(default_factory=list)
     projectiles: list[MagicMissile] = field(default_factory=list)
     effects: list[Explosion | LightningStrike | Meteor] = field(default_factory=list)
+
     @property
     def remaining_enemies(self) -> int:
         return sum(1 for enemy in self.enemies if enemy.alive)
@@ -54,7 +74,11 @@ class BattleField:
 
     @property
     def player_pos(self) -> tuple[int, int]:
-        return (PLAYER_X, PLAYER_Y) if self.index == 0 else (SCREEN_WIDTH - PLAYER_X, PLAYER_Y)
+        return (
+            (PLAYER_X, PLAYER_Y)
+            if self.index == 0
+            else (SCREEN_WIDTH - PLAYER_X, PLAYER_Y)
+        )
 
     def update(self, dt: float, player: Player) -> int:
         defeated_count = 0
@@ -83,23 +107,40 @@ class BattleField:
 
         return defeated_count
 
-    def draw(self, surface: pygame.Surface, active: bool, player_image: pygame.Surface | None = None) -> None:
+    def draw(
+        self,
+        surface: pygame.Surface,
+        active: bool,
+        player_image: pygame.Surface | None = None,
+    ) -> None:
         field_rect = pygame.Rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT)
         if self.background is not None:
             surface.blit(self.background, (0, 0))
             if not active:
-                inactive_overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+                inactive_overlay = pygame.Surface(
+                    (SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA
+                )
                 inactive_overlay.fill((0, 0, 0, 120))
                 surface.blit(inactive_overlay, (0, 0))
         else:
-            pygame.draw.rect(surface, COLOR_FIELD_BG if active else COLOR_INACTIVE_FIELD_BG, field_rect)
+            pygame.draw.rect(
+                surface,
+                COLOR_FIELD_BG if active else COLOR_INACTIVE_FIELD_BG,
+                field_rect,
+            )
 
         # 전장 방향에 맞춘 기지 라인과 플레이어
         base_x = self.base_line_x
         player_x, player_y = self.player_pos
-        pygame.draw.line(surface, COLOR_BASE, (base_x, 70), (base_x, SCREEN_HEIGHT - 70), 5)
+        pygame.draw.line(
+            surface, COLOR_BASE, (base_x, 70), (base_x, SCREEN_HEIGHT - 70), 5
+        )
         if player_image is not None:
-            image = pygame.transform.flip(player_image, True, False) if self.index == 1 else player_image
+            image = (
+                pygame.transform.flip(player_image, True, False)
+                if self.index == 1
+                else player_image
+            )
             rect = image.get_rect(midbottom=(player_x, player_y + 32))
             surface.blit(image, rect)
         else:
@@ -115,12 +156,24 @@ class BattleField:
 
 
 class BattleScene:
+    """전투 진행, 입력 처리, 전장 렌더링을 담당하는 씬."""
+
     mouse_visible = False
 
     def __init__(self) -> None:
         self.player = Player()
         self.field_backgrounds = self._load_field_backgrounds()
-        self.fields = [BattleField(index=i, background=self.field_backgrounds[i % len(self.field_backgrounds)] if self.field_backgrounds else None) for i in range(NUM_FIELDS)]
+        self.fields = [
+            BattleField(
+                index=i,
+                background=(
+                    self.field_backgrounds[i % len(self.field_backgrounds)]
+                    if self.field_backgrounds
+                    else None
+                ),
+            )
+            for i in range(NUM_FIELDS)
+        ]
         self.active_field_index = 0
         self.spawner = WaveSpawner()
         self.magic = MagicSystem()
@@ -132,6 +185,8 @@ class BattleScene:
         self.aim_pos = (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
         self.message = ""
         self.message_timer = 0.0
+        self.special_hold_gesture: str | None = None
+        self.special_hold_timer = 0.0
         self.reward_pending = False
         self.unlock_scene = UnlockScene()
         self.next_scene: str | None = None
@@ -140,7 +195,9 @@ class BattleScene:
         self.player_idle_image, self.player_cast_frames = self._load_player_sprites()
         self.player_cast_timer = 0.0
         self.player_cast_frame_time = 0.06
-        self.player_cast_total_time = self.player_cast_frame_time * max(1, len(self.player_cast_frames))
+        self.player_cast_total_time = self.player_cast_frame_time * max(
+            1, len(self.player_cast_frames)
+        )
 
     def _load_field_backgrounds(self) -> list[pygame.Surface]:
         project_root = Path(__file__).resolve().parents[3]
@@ -154,7 +211,9 @@ class BattleScene:
             backgrounds.append(image)
         return backgrounds
 
-    def _load_player_sprites(self) -> tuple[pygame.Surface | None, list[pygame.Surface]]:
+    def _load_player_sprites(
+        self,
+    ) -> tuple[pygame.Surface | None, list[pygame.Surface]]:
         project_root = Path(__file__).resolve().parents[3]
         sprite_dir = project_root / "assets" / "sprites" / "player"
         idle_path = sprite_dir / "wizard_player_idle_64.png"
@@ -185,7 +244,10 @@ class BattleScene:
     def _current_player_image(self) -> pygame.Surface | None:
         if self.player_cast_timer > 0.0 and self.player_cast_frames:
             elapsed = self.player_cast_total_time - self.player_cast_timer
-            frame_index = min(len(self.player_cast_frames) - 1, int(elapsed / self.player_cast_frame_time))
+            frame_index = min(
+                len(self.player_cast_frames) - 1,
+                int(elapsed / self.player_cast_frame_time),
+            )
             return self.player_cast_frames[frame_index]
         return self.player_idle_image
 
@@ -213,9 +275,7 @@ class BattleScene:
 
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_TAB:
-                self.active_field_index = (self.active_field_index + 1) % len(self.fields)
-                self.message = f"전장 {self.active_field_index + 1}로 전환"
-                self.message_timer = 1.2
+                self._switch_active_field()
             elif event.key == pygame.K_q:
                 self._push_gesture(GESTURE_SCISSORS)
             elif event.key == pygame.K_w:
@@ -225,28 +285,100 @@ class BattleScene:
         elif event.type == pygame.MOUSEMOTION:
             self.aim_pos = event.pos
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            self.message = self.magic.cast_by_combo(
-                self.current_combo,
-                self.player,
-                self.active_field,
-                self.aim_pos,
-                fields=self.fields,
-                origin_pos=self.active_field.player_pos,
-            )
-            if "Lv." in self.message:
-                self._start_player_cast_animation()
-            self.message_timer = 1.4
-            self.current_combo.clear()
+            self._cast_current_combo(self.aim_pos)
+
+    def handle_gesture_event(self, event: GestureEvent) -> None:
+        """AI bridge에서 받은 제스처 이벤트를 전투 입력으로 변환한다.
+
+        Args:
+            event: bridge 계층에서 전달된 제스처 이벤트.
+        """
+        if self.unlock_scene.pending or self.reward_pending:
+            self._handle_gesture_ui_event(event)
+            return
+
+        if self.game_over:
+            return
+
+        if event.kind == "stack" and event.gesture in STACK_GESTURES:
+            self._push_gesture(event.gesture)
+        elif event.kind == "aim":
+            self.aim_pos = screen_pos_from_gesture_event(event)
+        elif event.kind == "fire":
+            self._cast_current_combo(screen_pos_from_gesture_event(event))
+        elif event.kind == "special":
+            self._handle_special_gesture(event)
+
+    def _handle_gesture_ui_event(self, event: GestureEvent) -> None:
+        if event.kind not in {"aim", "fire"}:
+            return
+
+        pos = screen_pos_from_gesture_event(event)
+        self.aim_pos = pos
+        if event.kind != "fire":
+            return
+
+        click_event = pygame.event.Event(
+            pygame.MOUSEBUTTONDOWN,
+            {"button": 1, "pos": pos},
+        )
+        if self.unlock_scene.pending:
+            self._handle_unlock_event(click_event)
+        elif self.reward_pending:
+            self._handle_reward_event(click_event)
+
+    def _cast_current_combo(self, aim_pos: tuple[int, int]) -> None:
+        self.aim_pos = aim_pos
+        self.message = self.magic.cast_by_combo(
+            self.current_combo,
+            self.player,
+            self.active_field,
+            self.aim_pos,
+            fields=self.fields,
+            origin_pos=self.active_field.player_pos,
+        )
+        if "Lv." in self.message:
+            self._start_player_cast_animation()
+        self.message_timer = 1.4
+        self.current_combo.clear()
+
+    def _handle_special_gesture(self, event: GestureEvent) -> None:
+        is_new_hold = (
+            self.special_hold_gesture != event.gesture or self.special_hold_timer <= 0.0
+        )
+        self.special_hold_gesture = event.gesture
+        self.special_hold_timer = SPECIAL_GESTURE_HOLD_GRACE_SECONDS
+
+        gesture_name = SPECIAL_GESTURE_DISPLAY_NAMES.get(event.gesture, event.gesture)
+        if event.gesture == "clasp":
+            self.message = f"마나 충전: {gesture_name}"
+            self.message_timer = 0.4
+        elif event.gesture == "sonaldo" and is_new_hold:
+            self._switch_active_field(prefix=gesture_name)
+        else:
+            self.message = f"특수 제스처: {gesture_name}"
+            self.message_timer = 0.4
+
+    def _switch_active_field(self, prefix: str | None = None) -> None:
+        self.active_field_index = (self.active_field_index + 1) % len(self.fields)
+        message = f"전장 {self.active_field_index + 1}로 전환"
+        self.message = f"{prefix}: {message}" if prefix is not None else message
+        self.message_timer = 1.2
 
     def _push_gesture(self, gesture: str) -> None:
         self.current_combo.append(gesture)
         if len(self.current_combo) > GESTURE_COMBO_SIZE:
             self.current_combo.pop(0)
-        self.message = "입력: " + " + ".join({"scissors": "가위", "rock": "바위", "paper": "보"}.get(g, g) for g in self.current_combo)
+        self.message = "입력: " + " + ".join(
+            GESTURE_DISPLAY_NAMES.get(g, g) for g in self.current_combo
+        )
         self.message_timer = 1.2
 
     def _handle_unlock_event(self, event: pygame.event.Event) -> None:
-        if event.type == pygame.KEYDOWN and event.key in (pygame.K_RETURN, pygame.K_SPACE):
+        if event.type == pygame.KEYDOWN and event.key in (
+            pygame.K_RETURN,
+            pygame.K_SPACE,
+        ):
             self._close_unlock_scene()
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             self._close_unlock_scene()
@@ -258,21 +390,26 @@ class BattleScene:
                 self._select_reward(key_to_index[event.key])
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             for index, _option in enumerate(self.reward_options):
-                if self.hud.reward_card_rect(index, len(self.reward_options)).collidepoint(event.pos):
+                if self.hud.reward_card_rect(
+                    index, len(self.reward_options)
+                ).collidepoint(event.pos):
                     self._select_reward(index)
                     break
 
     def _open_reward_selection(self) -> None:
         self.reward_pending = True
-        pygame.mouse.set_visible(True)
-        self.reward_options = self.reward_system.make_options(self.player, self.magic, 3)
+        self.reward_options = self.reward_system.make_options(
+            self.player, self.magic, 3
+        )
         self.message = "스테이지 클리어! 보상 1개를 선택하면 다음 스테이지로 진행"
         self.message_timer = 3.0
 
     def _select_reward(self, index: int) -> None:
         if index < 0 or index >= len(self.reward_options):
             return
-        self.message = self.reward_system.apply(self.reward_options[index], self.player, self.magic)
+        self.message = self.reward_system.apply(
+            self.reward_options[index], self.player, self.magic
+        )
         self.message_timer = 2.0
         self.reward_pending = False
         self.reward_options.clear()
@@ -285,18 +422,15 @@ class BattleScene:
                 self._open_unlock_scene(unlock_spell, next_stage)
                 return
 
-        pygame.mouse.set_visible(False)
         self.spawner.start_stage(next_stage)
 
     def _open_unlock_scene(self, spell, next_stage: int) -> None:
         self.unlock_scene.open(spell, next_stage)
-        pygame.mouse.set_visible(True)
         self.message = f"새 스킬 해금: {spell.name}"
         self.message_timer = 2.0
 
     def _close_unlock_scene(self) -> None:
         unlocked_name = self.unlock_scene.close(self.magic)
-        pygame.mouse.set_visible(False)
         self.spawner.start_stage(self.unlock_scene.next_stage)
         self.message = f"{unlocked_name} 해금! Stage {self.spawner.stage} 시작"
         self.message_timer = 1.5
@@ -310,6 +444,7 @@ class BattleScene:
 
     def update(self, dt: float) -> None:
         self.player_cast_timer = max(0.0, self.player_cast_timer - dt)
+        self._update_special_hold(dt)
 
         if self.unlock_scene.pending:
             self.unlock_scene.update(dt, self.magic)
@@ -321,11 +456,11 @@ class BattleScene:
             return
 
         keys = pygame.key.get_pressed()
-        if keys[pygame.K_SPACE]:
+        if keys[pygame.K_SPACE] or self._is_special_holding("clasp"):
             self.player.charge_mana(dt)
 
-        for field in self.fields:
-            defeated = field.update(dt, self.player)
+        for battle_field in self.fields:
+            defeated = battle_field.update(dt, self.player)
             if defeated:
                 self.spawner.record_defeated(defeated)
 
@@ -339,11 +474,22 @@ class BattleScene:
 
         self.message_timer = max(0.0, self.message_timer - dt)
 
+    def _update_special_hold(self, dt: float) -> None:
+        if self.special_hold_timer <= 0.0:
+            self.special_hold_gesture = None
+            return
+
+        self.special_hold_timer = max(0.0, self.special_hold_timer - dt)
+        if self.special_hold_timer <= 0.0:
+            self.special_hold_gesture = None
+
+    def _is_special_holding(self, gesture: str) -> bool:
+        return self.special_hold_gesture == gesture and self.special_hold_timer > 0.0
+
     def draw(self, surface: pygame.Surface) -> None:
         player_image = self._current_player_image()
         self.active_field.draw(surface, active=True, player_image=player_image)
         self._draw_inactive_field_minimap(surface)
-        self.crosshair.draw(surface, self.aim_pos)
         self.hud.draw(
             surface=surface,
             player=self.player,
@@ -363,7 +509,7 @@ class BattleScene:
                 self.unlock_scene.demo_time,
                 self.unlock_scene.demo_field,
             )
-
+        self.crosshair.draw(surface, self.aim_pos)
 
     def _draw_inactive_field_minimap(self, surface: pygame.Surface) -> None:
         mini_w, mini_h = 320, 180  # 16:9 비율 유지 (1920x1080 / 6)
@@ -373,24 +519,28 @@ class BattleScene:
 
         # 반대편 전장을 임시 서페이스에 그대로 렌더링
         temp_surface = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
-        inactive.draw(temp_surface, active=False, player_image=self._current_player_image())
+        inactive.draw(
+            temp_surface, active=False, player_image=self._current_player_image()
+        )
 
         # 렌더링된 전장을 미니맵 크기로 축소
         minimap_surface = pygame.transform.smoothscale(temp_surface, (mini_w, mini_h))
-        
+
         # 메인 화면에 축소된 미니맵 그리기
         rect = pygame.Rect(x, y, mini_w, mini_h)
         surface.blit(minimap_surface, (x, y))
-        
+
         # 테두리
         pygame.draw.rect(surface, (100, 100, 120), rect, 2, border_radius=4)
 
         # 반대편 전장 텍스트 표시
         title_font = get_font(18, bold=True)
         font = get_font(16)
-        
+
         title = title_font.render(f"Field {inactive_index + 1}", True, (255, 255, 255))
         surface.blit(title, (x + 10, y + 8))
-        
-        enemies_count = font.render(f"남은 적: {inactive.remaining_enemies}", True, (255, 100, 100))
+
+        enemies_count = font.render(
+            f"남은 적: {inactive.remaining_enemies}", True, (255, 100, 100)
+        )
         surface.blit(enemies_count, (x + 10, y + 30))

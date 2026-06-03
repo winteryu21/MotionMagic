@@ -71,6 +71,28 @@ def test_explain_scene_accepts_gesture_fire_on_battle_button() -> None:
     assert scene.aim_pos == scene.start_button.center
 
 
+def test_explain_scene_moves_internal_aim_without_selecting_on_aim() -> None:
+    """Explain aim events should move only the internal aim point."""
+    scene = object.__new__(ExplainScene)
+    scene.next_scene = None
+    scene.start_button = pygame.Rect(100, 100, 200, 80)
+    scene.aim_pos = (0, 0)
+
+    scene.handle_gesture_event(
+        GestureEvent(
+            gesture="aim",
+            confidence=0.9,
+            aim_x=0.75,
+            aim_y=0.4,
+            kind="aim",
+            channel="right",
+        )
+    )
+
+    assert scene.aim_pos == (round(SCREEN_WIDTH * 0.75), round(SCREEN_HEIGHT * 0.4))
+    assert scene.next_scene is None
+
+
 def test_result_scene_accepts_gesture_fire_to_return_to_title() -> None:
     """Result screen should allow right-hand fire to return to title."""
     scene = object.__new__(ResultScene)

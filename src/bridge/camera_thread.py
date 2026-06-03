@@ -6,7 +6,6 @@ import logging
 import threading
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
 
 import cv2
 import mediapipe as mp
@@ -20,7 +19,7 @@ from mediapipe.tasks.python.vision import (
 )
 
 from src.ai.aim_tracker import AimAnchor
-from src.ai.collector import HAND_LANDMARKER_MODEL, _draw_landmarks
+from src.ai.collector import HAND_LANDMARKER_MODEL
 from src.ai.gesture_modes import HandLabel, HandObservation
 from src.ai.preprocessor import extract_landmarks
 from src.bridge.gesture_event import GestureEvent
@@ -38,21 +37,6 @@ logger = logging.getLogger(__name__)
 DEFAULT_MIN_HAND_DETECTION_CONFIDENCE = 0.7
 DEFAULT_MIN_HAND_PRESENCE_CONFIDENCE = 0.5
 DEFAULT_MIN_TRACKING_CONFIDENCE = 0.5
-
-
-@dataclass(frozen=True, slots=True)
-class CameraDebugFrame:
-    """게임 디버그 오버레이에 표시할 카메라 프레임.
-
-    Attributes:
-        rgb_bytes: RGB24 픽셀 바이트.
-        width: 프레임 너비.
-        height: 프레임 높이.
-    """
-
-    rgb_bytes: bytes
-    width: int
-    height: int
 
 
 class CameraThread:
@@ -114,8 +98,6 @@ class CameraThread:
         )
         self._thread: threading.Thread | None = None
         self._running = False
-        self._debug_lock = threading.Lock()
-        self._debug_frame: CameraDebugFrame | None = None
 
     def start(self) -> None:
         """백그라운드 스레드 시작."""
@@ -134,15 +116,6 @@ class CameraThread:
             self._thread.join(timeout=2.0)
             self._thread = None
         logger.info("카메라 스레드 중지")
-
-    def get_debug_frame(self) -> CameraDebugFrame | None:
-        """최근 카메라 디버그 프레임을 반환한다.
-
-        Returns:
-            가장 최근 RGB 디버그 프레임. 아직 프레임이 없으면 ``None``.
-        """
-        with self._debug_lock:
-            return self._debug_frame
 
     def _run(self) -> None:
         """스레드 메인 루프. MediaPipe + 모드 상태 머신을 수행."""
@@ -186,7 +159,6 @@ class CameraThread:
                     mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
                     timestamp_ms = int((frame_started_at - started_at) * 1000)
                     result = landmarker.detect_for_video(mp_image, timestamp_ms)
-                    self._update_debug_frame(frame, result)
                     observations = self._build_observations(result)
                     events = self._pipeline.update(
                         observations,
@@ -231,68 +203,6 @@ class CameraThread:
             )
 
         return observations
-
-    def _update_debug_frame(self, frame: object, result: object) -> None:
-        """랜드마크를 그린 최신 카메라 프레임을 저장한다.
-
-        Args:
-            frame: OpenCV BGR 이미지.
-            result: HandLandmarker 결과.
-        """
-        debug_frame = frame.copy()
-        hand_landmarks = getattr(result, "hand_landmarks", None)
-        if hand_landmarks:
-            for hand_index, landmarks in enumerate(hand_landmarks):
-                raw_label, _score = self._extract_handedness(result, hand_index)
-                label = self._effective_handedness(raw_label)
-                landmark_dicts = [
-                    {"x": float(lm.x), "y": float(lm.y), "z": float(lm.z)}
-                    for lm in landmarks
-                ]
-                color = (0, 255, 0) if label == "Left" else (255, 180, 0)
-                _draw_landmarks(debug_frame, landmark_dicts, color=color)
-                self._draw_debug_label(debug_frame, landmark_dicts, label)
-
-        rgb_frame = cv2.cvtColor(debug_frame, cv2.COLOR_BGR2RGB)
-        height, width = rgb_frame.shape[:2]
-        snapshot = CameraDebugFrame(
-            rgb_bytes=rgb_frame.tobytes(),
-            width=int(width),
-            height=int(height),
-        )
-        with self._debug_lock:
-            self._debug_frame = snapshot
-
-    def _draw_debug_label(
-        self,
-        frame: object,
-        landmarks: list[dict[str, float]],
-        label: HandLabel | None,
-    ) -> None:
-        """디버그 프레임에 손 라벨을 그린다.
-
-        Args:
-            frame: OpenCV BGR 이미지.
-            landmarks: 손 랜드마크 좌표 목록.
-            label: 보정된 handedness 라벨.
-        """
-        if not landmarks:
-            return
-
-        height, width = frame.shape[:2]
-        wrist = landmarks[0]
-        x = max(0, min(width - 1, int(wrist["x"] * width)))
-        y = max(20, min(height - 1, int(wrist["y"] * height)))
-        cv2.putText(
-            frame,
-            label or "?",
-            (x, y - 8),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.65,
-            (255, 255, 255),
-            2,
-            cv2.LINE_AA,
-        )
 
     def _extract_handedness(
         self,

@@ -172,10 +172,6 @@ class GestureModePipeline:
             )
             return events
 
-        if special_candidate is not None and special_update.stable is not None:
-            events.append(self._build_special_event(special_update.stable, left, right))
-            return events
-
         if special_candidate is not None or special_update.stable is not None:
             return events
 

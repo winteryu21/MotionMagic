@@ -19,8 +19,8 @@ PLAYER_Y = SCREEN_HEIGHT // 2
 
 # ── 전투 배경 ──
 BATTLE_BACKGROUND_FILES = (
-    "assets/maps/ice_battle.png",
-    "assets/maps/fire_battle.png",
+    "assets/backgrounds/field_left_player_ice.png",
+    "assets/backgrounds/field_right_player_fire.png",
 )
 
 # ── 개발용 제스처 입력 ──
@@ -57,12 +57,6 @@ WAVE_CLEAR_DELAY = 1.5
 AIM_SENSITIVITY = 2.5
 AIM_EMA_ALPHA = 0.3  # 지수가중이동평균 스무딩 계수
 AIM_BUFFER_SIZE = 5  # 반동 발사용 좌표 버퍼
-SPECIAL_GESTURE_HOLD_GRACE_SECONDS = 0.35
-
-# ── 디버그 ──
-DEBUG_CAMERA_OVERLAY_DEFAULT = False
-DEBUG_CAMERA_OVERLAY_WIDTH = 320
-DEFAULT_CAMERA_ID = 0
 
 # ── 색상 ──
 COLOR_BG = (15, 15, 25)
@@ -80,7 +74,6 @@ COLOR_PROJECTILE = (116, 185, 255)
 COLOR_EXPLOSION = (255, 177, 66)
 COLOR_LIGHTNING = (120, 210, 255)
 COLOR_STUN = (241, 196, 15)
-COLOR_CROSSHAIR = (255, 48, 48)
 
 # ── 메테오 ──
 COLOR_METEOR = (230, 126, 34)

@@ -1,1312 +1,1600 @@
 <!DOCTYPE html>
 <html lang="ko">
+
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MotionMagic — 최종 발표</title>
-<meta name="description" content="MediaPipe 손동작 인식 기반 실시간 마법 전투 디펜스 게임 최종 발표 자료">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+KR:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<style>
-/* ===== Reset & Base ===== */
-*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MotionMagic — 최종 발표</title>
+  <meta name="description" content="MediaPipe 손동작 인식 기반 실시간 마법 전투 디펜스 게임 최종 발표 자료">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+KR:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet">
+  <style>
+    /* ===== Reset & Base ===== */
+    *,
+    *::before,
+    *::after {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
 
-:root {
-  --bg: #09090b;
-  --bg-card: #131316;
-  --bg-card-hover: #1a1a1f;
-  --border: #222228;
-  --border-light: #2a2a32;
-  --text: #ececf0;
-  --text-muted: #6e6e80;
-  --text-dim: #4a4a58;
-  --accent: #9b8afb;
-  --accent-dim: rgba(155, 138, 251, 0.12);
-  --accent-text: #bdb2fc;
-  --cyan: #5ee7d5;
-  --cyan-dim: rgba(94, 231, 213, 0.10);
-  --rose: #f97583;
-  --yellow: #e3b341;
-  --font-sans: 'Inter', 'Noto Sans KR', system-ui, -apple-system, sans-serif;
-  --font-mono: 'JetBrains Mono', 'Consolas', monospace;
-  --slide-max-w: 1400px;
-  --transition: 0.4s cubic-bezier(0.25, 0.1, 0.25, 1);
-}
+    :root {
+      --bg: #09090b;
+      --bg-card: #131316;
+      --bg-card-hover: #1a1a1f;
+      --border: #222228;
+      --border-light: #2a2a32;
+      --text: #ececf0;
+      --text-muted: #6e6e80;
+      --text-dim: #4a4a58;
+      --accent: #9b8afb;
+      --accent-dim: rgba(155, 138, 251, 0.12);
+      --accent-text: #bdb2fc;
+      --cyan: #5ee7d5;
+      --cyan-dim: rgba(94, 231, 213, 0.10);
+      --rose: #f97583;
+      --yellow: #e3b341;
+      --font-sans: 'Inter', 'Noto Sans KR', system-ui, -apple-system, sans-serif;
+      --font-mono: 'JetBrains Mono', 'Consolas', monospace;
+      --slide-max-w: 1400px;
+      --transition: 0.4s cubic-bezier(0.25, 0.1, 0.25, 1);
+    }
 
-html, body {
-  width: 100%; height: 100%;
-  overflow: hidden;
-  background: var(--bg);
-  color: var(--text);
-  font-family: var(--font-sans);
-  font-size: 22px;
-  line-height: 1.7;
-  -webkit-font-smoothing: antialiased;
-}
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-sans);
+      font-size: 22px;
+      line-height: 1.7;
+      -webkit-font-smoothing: antialiased;
+    }
 
-/* ===== Slide Container ===== */
-.deck { width: 100%; height: 100%; position: relative; }
+    /* ===== Slide Container ===== */
+    .deck {
+      width: 100%;
+      height: 100%;
+      position: relative;
+    }
 
-.slide {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  padding: 50px 100px;
-  opacity: 0;
-  visibility: hidden;
-  transform: translateY(12px);
-  transition: opacity var(--transition), transform var(--transition), visibility 0s 0.4s;
-}
-.slide.active {
-  opacity: 1;
-  visibility: visible;
-  transform: translateY(0);
-  transition: opacity var(--transition), transform var(--transition), visibility 0s 0s;
-}
+    .slide {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      padding: 50px 100px;
+      opacity: 0;
+      visibility: hidden;
+      transform: translateY(12px);
+      transition: opacity var(--transition), transform var(--transition), visibility 0s 0.4s;
+    }
 
-.slide-inner {
-  width: 100%;
-  max-width: var(--slide-max-w);
-}
+    .slide.active {
+      opacity: 1;
+      visibility: visible;
+      transform: translateY(0);
+      transition: opacity var(--transition), transform var(--transition), visibility 0s 0s;
+    }
 
-/* ===== Typography ===== */
-h1 {
-  font-size: 3.2rem;
-  font-weight: 700;
-  letter-spacing: -0.03em;
-  line-height: 1.2;
-  margin-bottom: 0.5em;
-}
-h2 {
-  font-size: 2.1rem;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  line-height: 1.3;
-  margin-bottom: 0.6em;
-  color: var(--text);
-}
-h2::after {
-  content: '';
-  display: block;
-  width: 50px;
-  height: 3px;
-  background: var(--accent);
-  margin-top: 12px;
-  border-radius: 1px;
-}
-h3 {
-  font-size: 1.3rem;
-  font-weight: 500;
-  color: var(--text-muted);
-  margin-bottom: 0.4em;
-}
-p { margin-bottom: 0.8em; color: var(--text); }
-.muted { color: var(--text-muted); }
-.dim { color: var(--text-dim); }
-.accent { color: var(--accent-text); }
-.cyan { color: var(--cyan); }
-.rose { color: var(--rose); }
-.yellow { color: var(--yellow); }
-strong { font-weight: 600; }
-code {
-  font-family: var(--font-mono);
-  font-size: 0.88em;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  padding: 2px 7px;
-  border-radius: 4px;
-  color: var(--accent-text);
-}
-small { font-size: 0.85rem; color: var(--text-muted); }
+    .slide-inner {
+      width: 100%;
+      max-width: var(--slide-max-w);
+    }
 
-/* ===== Title Slide ===== */
-.slide-title { text-align: center; }
-.slide-title h1 { font-size: 4rem; margin-bottom: 0.3em; }
-.slide-title .subtitle {
-  font-size: 1.35rem;
-  color: var(--text-muted);
-  font-weight: 400;
-  margin-bottom: 2em;
-  line-height: 1.6;
-}
-.slide-title .keywords {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  justify-content: center;
-}
-.slide-title .keywords span {
-  font-family: var(--font-mono);
-  font-size: 0.88rem;
-  padding: 6px 16px;
-  border-radius: 20px;
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-}
+    /* ===== Typography ===== */
+    h1 {
+      font-size: 3.2rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      line-height: 1.2;
+      margin-bottom: 0.5em;
+    }
 
-/* ===== Cards & Panels ===== */
-.card {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 28px 32px;
-  margin-bottom: 16px;
-}
-.card-sm {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 20px 24px;
-}
-.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-.grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
-.grid-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 18px; }
-.flex-center { display: flex; align-items: center; justify-content: center; }
-.gap-sm { gap: 8px; }
-.gap-md { gap: 16px; }
-.mt-1 { margin-top: 16px; }
-.mt-2 { margin-top: 24px; }
-.mb-1 { margin-bottom: 16px; }
+    h2 {
+      font-size: 2.1rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      line-height: 1.3;
+      margin-bottom: 0.6em;
+      color: var(--text);
+    }
 
-/* ===== Tables ===== */
-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 1rem;
-}
-th, td {
-  padding: 12px 20px;
-  text-align: left;
-  border-bottom: 1px solid var(--border);
-}
-th {
-  font-weight: 500;
-  color: var(--text-muted);
-  font-size: 0.88rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-td { color: var(--text); }
-tr:last-child td { border-bottom: none; }
-.table-wrap {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  overflow: hidden;
-}
-.table-wrap table th { background: rgba(255,255,255,0.02); }
+    h2::after {
+      content: '';
+      display: block;
+      width: 50px;
+      height: 3px;
+      background: var(--accent);
+      margin-top: 12px;
+      border-radius: 1px;
+    }
 
-/* ===== Diagram Boxes ===== */
-.diagram { display: flex; align-items: center; gap: 0; flex-wrap: wrap; justify-content: center; }
-.diagram .box {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 12px 22px;
-  font-size: 0.95rem;
-  font-weight: 500;
-  text-align: center;
-  min-width: 120px;
-}
-.diagram .box.highlight {
-  border-color: var(--accent);
-  background: var(--accent-dim);
-  color: var(--accent-text);
-}
-.diagram .box.cyan-hl {
-  border-color: rgba(94,231,213,0.4);
-  background: var(--cyan-dim);
-  color: var(--cyan);
-}
-.diagram .arrow {
-  color: var(--text-dim);
-  font-size: 1.4rem;
-  padding: 0 6px;
-  user-select: none;
-}
+    h3 {
+      font-size: 1.3rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      margin-bottom: 0.4em;
+    }
 
-/* ===== Architecture Comparison ===== */
-.arch-compare {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  gap: 28px;
-  align-items: start;
-}
-.arch-compare .divider {
-  width: 1px;
-  background: var(--border);
-  align-self: stretch;
-  margin: 0 4px;
-}
-.arch-label {
-  font-size: 0.88rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-dim);
-  margin-bottom: 12px;
-  font-weight: 500;
-}
+    p {
+      margin-bottom: 0.8em;
+      color: var(--text);
+    }
 
-/* ===== Flow Steps ===== */
-.flow-steps {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.flow-step {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 1rem;
-}
-.flow-step .num {
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  background: var(--accent-dim);
-  color: var(--accent-text);
-  font-size: 0.78rem;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
+    .muted {
+      color: var(--text-muted);
+    }
 
-/* ===== Model Architecture Diagram ===== */
-.model-arch {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  justify-content: center;
-  flex-wrap: wrap;
-}
-.model-branch {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  align-items: center;
-}
-.model-box {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 8px 18px;
-  font-size: 0.88rem;
-  font-family: var(--font-mono);
-  text-align: center;
-  white-space: nowrap;
-}
-.model-box.accent-border { border-color: var(--accent); color: var(--accent-text); }
-.model-box.cyan-border { border-color: rgba(94,231,213,0.4); color: var(--cyan); }
-.model-join {
-  font-size: 0.88rem;
-  color: var(--text-dim);
-  text-align: center;
-}
+    .dim {
+      color: var(--text-dim);
+    }
 
-/* ===== Problem/Solution ===== */
-.problem-box {
-  border-left: 3px solid var(--rose);
-  padding-left: 24px;
-  margin-bottom: 20px;
-}
-.solution-box {
-  border-left: 3px solid var(--cyan);
-  padding-left: 24px;
-}
-.problem-box h3 { color: var(--rose); }
-.solution-box h3 { color: var(--cyan); }
+    .accent {
+      color: var(--accent-text);
+    }
 
-/* ===== Mode Cards ===== */
-.mode-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 24px;
-  text-align: center;
-}
-.mode-card .mode-icon {
-  font-size: 2.2rem;
-  margin-bottom: 8px;
-}
-.mode-card .mode-name {
-  font-weight: 600;
-  font-size: 1.15rem;
-  margin-bottom: 4px;
-}
-.mode-card .mode-desc {
-  font-size: 0.92rem;
-  color: var(--text-muted);
-  line-height: 1.5;
-}
+    .cyan {
+      color: var(--cyan);
+    }
 
-/* ===== Trial & Error Table ===== */
-.trial-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1px; }
-.trial-cell {
-  padding: 14px 20px;
-  font-size: 0.92rem;
-  background: var(--bg-card);
-}
-.trial-cell:first-child { border-radius: 6px 0 0 6px; }
-.trial-cell:last-child { border-radius: 0 6px 6px 0; }
-.trial-header .trial-cell {
-  background: rgba(255,255,255,0.03);
-  font-weight: 500;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  font-size: 0.82rem;
-  letter-spacing: 0.05em;
-}
-.trial-highlight { background: var(--accent-dim) !important; }
+    .rose {
+      color: var(--rose);
+    }
 
-/* ===== Eval Images ===== */
-.eval-images {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20px;
-}
-.eval-images .img-wrap {
-  background: #fff;
-  border-radius: 8px;
-  overflow: hidden;
-  padding: 4px;
-}
-.eval-images img {
-  width: 100%;
-  height: auto;
-  display: block;
-  border-radius: 4px;
-}
-.eval-images .img-label {
-  text-align: center;
-  font-size: 0.88rem;
-  color: var(--text-muted);
-  margin-top: 8px;
-}
+    .yellow {
+      color: var(--yellow);
+    }
 
-/* ===== Demo Placeholder ===== */
-.demo-placeholder {
-  width: 100%;
-  aspect-ratio: 16/9;
-  background: var(--bg-card);
-  border: 2px dashed var(--border-light);
-  border-radius: 12px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  color: var(--text-dim);
-}
-.demo-placeholder .icon { font-size: 3rem; opacity: 0.4; }
-.demo-placeholder video {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  border-radius: 10px;
-}
+    strong {
+      font-weight: 600;
+    }
 
-/* ===== Conclusion ===== */
-.conclusion-points {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.conclusion-point {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  font-size: 1.05rem;
-}
-.conclusion-point .bullet {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--accent);
-  margin-top: 10px;
-  flex-shrink: 0;
-}
+    code {
+      font-family: var(--font-mono);
+      font-size: 0.88em;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      padding: 2px 7px;
+      border-radius: 4px;
+      color: var(--accent-text);
+    }
 
-.closing-quote {
-  border-left: 3px solid var(--accent);
-  padding: 16px 24px;
-  margin-top: 24px;
-  font-size: 1.1rem;
-  color: var(--text-muted);
-  font-style: italic;
-  background: var(--accent-dim);
-  border-radius: 0 8px 8px 0;
-}
+    small {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
 
-/* ===== Team Grid ===== */
-.team-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 24px;
-}
-.team-section {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 28px 32px;
-}
-.team-section-title {
-  font-size: 0.88rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-dim);
-  margin-bottom: 16px;
-  font-weight: 500;
-}
-.team-member {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 10px;
-}
-.team-member:last-child { margin-bottom: 0; }
-.team-avatar {
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.92rem;
-  font-weight: 600;
-  flex-shrink: 0;
-}
-.team-avatar.ai-team { background: var(--accent-dim); color: var(--accent-text); }
-.team-avatar.game-team { background: var(--cyan-dim); color: var(--cyan); }
-.team-name { font-weight: 500; font-size: 1.1rem; }
-.dep-flow {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  margin-top: 24px;
-}
-.dep-box {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 10px 22px;
-  font-family: var(--font-mono);
-  font-size: 0.95rem;
-}
-.dep-arrow { color: var(--text-dim); font-size: 0.9rem; }
+    /* ===== Title Slide ===== */
+    .slide-title {
+      text-align: center;
+    }
 
-/* ===== Progress Bar ===== */
-.progress-bar {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  height: 2px;
-  background: var(--accent);
-  transition: width var(--transition);
-  z-index: 100;
-}
+    .slide-title h1 {
+      font-size: 4rem;
+      margin-bottom: 0.3em;
+    }
 
-/* ===== Slide Counter ===== */
-.slide-counter {
-  position: fixed;
-  bottom: 16px;
-  right: 24px;
-  font-size: 0.75rem;
-  font-family: var(--font-mono);
-  color: var(--text-dim);
-  z-index: 100;
-}
+    .slide-title .subtitle {
+      font-size: 1.35rem;
+      color: var(--text-muted);
+      font-weight: 400;
+      margin-bottom: 2em;
+      line-height: 1.6;
+    }
 
-/* ===== Landmark Diagram ===== */
-.landmark-info {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20px;
-  align-items: start;
-}
-.landmark-grid {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 4px 16px;
-  font-size: 1rem;
-}
-.landmark-grid .label { color: var(--text-muted); font-weight: 500; }
-.landmark-grid .value { color: var(--text); }
+    .slide-title .keywords {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: center;
+    }
 
-/* ===== Lists ===== */
-ul.clean-list {
-  list-style: none;
-  padding: 0;
-}
-ul.clean-list li {
-  padding: 5px 0;
-  font-size: 1rem;
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-}
-ul.clean-list li::before {
-  content: '·';
-  color: var(--text-dim);
-  font-weight: 700;
-  flex-shrink: 0;
-  margin-top: -1px;
-}
+    .slide-title .keywords span {
+      font-family: var(--font-mono);
+      font-size: 0.88rem;
+      padding: 6px 16px;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+    }
 
-/* ===== Badge ===== */
-.badge {
-  display: inline-block;
-  font-size: 0.82rem;
-  font-weight: 500;
-  padding: 3px 12px;
-  border-radius: 12px;
-  margin-left: 8px;
-  vertical-align: middle;
-}
-.badge-pass { background: rgba(94,231,213,0.12); color: var(--cyan); }
-.badge-accent { background: var(--accent-dim); color: var(--accent-text); }
+    /* ===== Cards & Panels ===== */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 28px 32px;
+      margin-bottom: 16px;
+    }
 
-/* ===== Responsive ===== */
-@media (max-width: 900px) {
-  .slide { padding: 40px 32px; }
-  h1 { font-size: 2rem; }
-  .slide-title h1 { font-size: 2.4rem; }
-  h2 { font-size: 1.4rem; }
-  .grid-2, .grid-3, .grid-4, .arch-compare, .team-grid, .eval-images, .landmark-info {
-    grid-template-columns: 1fr;
-  }
-  .arch-compare .divider { display: none; }
-  .diagram { flex-direction: column; }
-  .diagram .arrow { transform: rotate(90deg); }
-  table { font-size: 0.82rem; }
-}
-</style>
+    .card-sm {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px 24px;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 20px;
+    }
+
+    .grid-4 {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr 1fr;
+      gap: 18px;
+    }
+
+    .flex-center {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .gap-sm {
+      gap: 8px;
+    }
+
+    .gap-md {
+      gap: 16px;
+    }
+
+    .mt-1 {
+      margin-top: 16px;
+    }
+
+    .mt-2 {
+      margin-top: 24px;
+    }
+
+    .mb-1 {
+      margin-bottom: 16px;
+    }
+
+    /* ===== Tables ===== */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 1rem;
+    }
+
+    th,
+    td {
+      padding: 12px 20px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+
+    th {
+      font-weight: 500;
+      color: var(--text-muted);
+      font-size: 0.88rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    td {
+      color: var(--text);
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    .table-wrap {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .table-wrap table th {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    /* ===== Diagram Boxes ===== */
+    .diagram {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .diagram .box {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 22px;
+      font-size: 0.95rem;
+      font-weight: 500;
+      text-align: center;
+      min-width: 120px;
+    }
+
+    .diagram .box.highlight {
+      border-color: var(--accent);
+      background: var(--accent-dim);
+      color: var(--accent-text);
+    }
+
+    .diagram .box.cyan-hl {
+      border-color: rgba(94, 231, 213, 0.4);
+      background: var(--cyan-dim);
+      color: var(--cyan);
+    }
+
+    .diagram .arrow {
+      color: var(--text-dim);
+      font-size: 1.4rem;
+      padding: 0 6px;
+      user-select: none;
+    }
+
+    /* ===== Architecture Comparison ===== */
+    .arch-compare {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      gap: 28px;
+      align-items: start;
+    }
+
+    .arch-compare .divider {
+      width: 1px;
+      background: var(--border);
+      align-self: stretch;
+      margin: 0 4px;
+    }
+
+    .arch-label {
+      font-size: 0.88rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-dim);
+      margin-bottom: 12px;
+      font-weight: 500;
+    }
+
+    /* ===== Flow Steps ===== */
+    .flow-steps {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .flow-step {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 1rem;
+    }
+
+    .flow-step .num {
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      background: var(--accent-dim);
+      color: var(--accent-text);
+      font-size: 0.78rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    /* ===== Model Architecture Diagram ===== */
+    .model-arch {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .model-branch {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      align-items: center;
+    }
+
+    .model-box {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 18px;
+      font-size: 0.88rem;
+      font-family: var(--font-mono);
+      text-align: center;
+      white-space: nowrap;
+    }
+
+    .model-box.accent-border {
+      border-color: var(--accent);
+      color: var(--accent-text);
+    }
+
+    .model-box.cyan-border {
+      border-color: rgba(94, 231, 213, 0.4);
+      color: var(--cyan);
+    }
+
+    .model-join {
+      font-size: 0.88rem;
+      color: var(--text-dim);
+      text-align: center;
+    }
+
+    /* ===== Problem/Solution ===== */
+    .problem-box {
+      border-left: 3px solid var(--rose);
+      padding-left: 24px;
+      margin-bottom: 20px;
+    }
+
+    .solution-box {
+      border-left: 3px solid var(--cyan);
+      padding-left: 24px;
+    }
+
+    .problem-box h3 {
+      color: var(--rose);
+    }
+
+    .solution-box h3 {
+      color: var(--cyan);
+    }
+
+    /* ===== Mode Cards ===== */
+    .mode-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 24px;
+      text-align: center;
+    }
+
+    .mode-card .mode-icon {
+      font-size: 2.2rem;
+      margin-bottom: 8px;
+    }
+
+    .mode-card .mode-name {
+      font-weight: 600;
+      font-size: 1.15rem;
+      margin-bottom: 4px;
+    }
+
+    .mode-card .mode-desc {
+      font-size: 0.92rem;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    /* ===== Trial & Error Table ===== */
+    .trial-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 1px;
+    }
+
+    .trial-cell {
+      padding: 14px 20px;
+      font-size: 0.92rem;
+      background: var(--bg-card);
+    }
+
+    .trial-cell:first-child {
+      border-radius: 6px 0 0 6px;
+    }
+
+    .trial-cell:last-child {
+      border-radius: 0 6px 6px 0;
+    }
+
+    .trial-header .trial-cell {
+      background: rgba(255, 255, 255, 0.03);
+      font-weight: 500;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      font-size: 0.82rem;
+      letter-spacing: 0.05em;
+    }
+
+    .trial-highlight {
+      background: var(--accent-dim) !important;
+    }
+
+    /* ===== Eval Images ===== */
+    .eval-images {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    .eval-images .img-wrap {
+      background: #fff;
+      border-radius: 8px;
+      overflow: hidden;
+      padding: 4px;
+    }
+
+    .eval-images img {
+      width: 100%;
+      height: auto;
+      display: block;
+      border-radius: 4px;
+    }
+
+    .eval-images .img-label {
+      text-align: center;
+      font-size: 0.88rem;
+      color: var(--text-muted);
+      margin-top: 8px;
+    }
+
+    /* ===== Demo Placeholder ===== */
+    .demo-placeholder {
+      width: 100%;
+      aspect-ratio: 16/9;
+      background: var(--bg-card);
+      border: 2px dashed var(--border-light);
+      border-radius: 12px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      color: var(--text-dim);
+    }
+
+    .demo-placeholder .icon {
+      font-size: 3rem;
+      opacity: 0.4;
+    }
+
+    .demo-placeholder video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      border-radius: 10px;
+    }
+
+    /* ===== Conclusion ===== */
+    .conclusion-points {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .conclusion-point {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      font-size: 1.05rem;
+    }
+
+    .conclusion-point .bullet {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      margin-top: 10px;
+      flex-shrink: 0;
+    }
+
+    .closing-quote {
+      border-left: 3px solid var(--accent);
+      padding: 16px 24px;
+      margin-top: 24px;
+      font-size: 1.1rem;
+      color: var(--text-muted);
+      font-style: italic;
+      background: var(--accent-dim);
+      border-radius: 0 8px 8px 0;
+    }
+
+    /* ===== Team Grid ===== */
+    .team-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+
+    .team-section {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 28px 32px;
+    }
+
+    .team-section-title {
+      font-size: 0.88rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-dim);
+      margin-bottom: 16px;
+      font-weight: 500;
+    }
+
+    .team-member {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .team-member:last-child {
+      margin-bottom: 0;
+    }
+
+    .team-avatar {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.92rem;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+
+    .team-avatar.ai-team {
+      background: var(--accent-dim);
+      color: var(--accent-text);
+    }
+
+    .team-avatar.game-team {
+      background: var(--cyan-dim);
+      color: var(--cyan);
+    }
+
+    .team-name {
+      font-weight: 500;
+      font-size: 1.1rem;
+    }
+
+    .dep-flow {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 24px;
+    }
+
+    .dep-box {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px 22px;
+      font-family: var(--font-mono);
+      font-size: 0.95rem;
+    }
+
+    .dep-arrow {
+      color: var(--text-dim);
+      font-size: 0.9rem;
+    }
+
+    /* ===== Progress Bar ===== */
+    .progress-bar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      height: 2px;
+      background: var(--accent);
+      transition: width var(--transition);
+      z-index: 100;
+    }
+
+    /* ===== Slide Counter ===== */
+    .slide-counter {
+      position: fixed;
+      bottom: 16px;
+      right: 24px;
+      font-size: 0.75rem;
+      font-family: var(--font-mono);
+      color: var(--text-dim);
+      z-index: 100;
+    }
+
+    /* ===== Landmark Diagram ===== */
+    .landmark-info {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      align-items: start;
+    }
+
+    .landmark-grid {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 4px 16px;
+      font-size: 1rem;
+    }
+
+    .landmark-grid .label {
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .landmark-grid .value {
+      color: var(--text);
+    }
+
+    /* ===== Lists ===== */
+    ul.clean-list {
+      list-style: none;
+      padding: 0;
+    }
+
+    ul.clean-list li {
+      padding: 5px 0;
+      font-size: 1rem;
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+    }
+
+    ul.clean-list li::before {
+      content: '·';
+      color: var(--text-dim);
+      font-weight: 700;
+      flex-shrink: 0;
+      margin-top: -1px;
+    }
+
+    /* ===== Badge ===== */
+    .badge {
+      display: inline-block;
+      font-size: 0.82rem;
+      font-weight: 500;
+      padding: 3px 12px;
+      border-radius: 12px;
+      margin-left: 8px;
+      vertical-align: middle;
+    }
+
+    .badge-pass {
+      background: rgba(94, 231, 213, 0.12);
+      color: var(--cyan);
+    }
+
+    .badge-accent {
+      background: var(--accent-dim);
+      color: var(--accent-text);
+    }
+
+    /* ===== Responsive ===== */
+    @media (max-width: 900px) {
+      .slide {
+        padding: 40px 32px;
+      }
+
+      h1 {
+        font-size: 2rem;
+      }
+
+      .slide-title h1 {
+        font-size: 2.4rem;
+      }
+
+      h2 {
+        font-size: 1.4rem;
+      }
+
+      .grid-2,
+      .grid-3,
+      .grid-4,
+      .arch-compare,
+      .team-grid,
+      .eval-images,
+      .landmark-info {
+        grid-template-columns: 1fr;
+      }
+
+      .arch-compare .divider {
+        display: none;
+      }
+
+      .diagram {
+        flex-direction: column;
+      }
+
+      .diagram .arrow {
+        transform: rotate(90deg);
+      }
+
+      table {
+        font-size: 0.82rem;
+      }
+    }
+  </style>
 </head>
+
 <body>
 
-<div class="deck" id="deck">
+  <div class="deck" id="deck">
 
-<!-- ========== Slide 1: Title ========== -->
-<section class="slide slide-title active" data-slide="1">
-  <div class="slide-inner">
-    <h1>MotionMagic</h1>
-    <p class="subtitle">
-      MediaPipe 손동작 인식 기반<br>
-      실시간 마법 전투 디펜스 게임
-    </p>
-    <div style="margin-bottom: 1.6em;">
-      <small class="muted">인공지능 과목 최종 발표</small>
-    </div>
-    <div class="keywords">
-      <span>MediaPipe</span>
-      <span>Landmark</span>
-      <span>CNN</span>
-      <span>Feature Engineering</span>
-      <span>Rule-based Validation</span>
-      <span>State Machine</span>
-      <span>Real-time HCI</span>
-    </div>
-  </div>
-</section>
+    <!-- ========== Slide 1: Title ========== -->
+    <section class="slide slide-title active" data-slide="1">
+      <div class="slide-inner">
+        <h1>MotionMagic</h1>
+        <p class="subtitle">
+          MediaPipe 손동작 인식 기반<br>
+          실시간 마법 전투 디펜스 게임
+        </p>
 
-<!-- ========== Slide 2: Team ========== -->
-<section class="slide" data-slide="2">
-  <div class="slide-inner">
-    <h2>팀 소개 & 역할 분담</h2>
-
-    <div class="team-grid">
-      <div class="team-section">
-        <div class="team-section-title">AI 파이프라인</div>
-        <div class="team-member">
-          <div class="team-avatar ai-team">유</div>
-          <div>
-            <div class="team-name">유민서</div>
-            <small class="muted">데이터 수집 · 전처리 · CNN 학습 · 평가</small>
-          </div>
-        </div>
-        <div class="team-member">
-          <div class="team-avatar ai-team">이</div>
-          <div>
-            <div class="team-name">이현승</div>
-            <small class="muted">규칙 검증 · 모드 파이프라인 · 진단 도구</small>
-          </div>
+        <div class="keywords">
+          <span>MediaPipe</span>
+          <span>Landmark</span>
+          <span>CNN</span>
+          <span>Feature Engineering</span>
+          <span>Rule-based Validation</span>
+          <span>State Machine</span>
+          <span>Real-time HCI</span>
         </div>
       </div>
-      <div class="team-section">
-        <div class="team-section-title">게임 클라이언트</div>
-        <div class="team-member">
-          <div class="team-avatar game-team">김</div>
-          <div>
-            <div class="team-name">김규민</div>
-            <small class="muted">Pygame 전투 시스템 · 마법/투사체 · 스테이지</small>
-          </div>
-        </div>
-        <div class="team-member">
-          <div class="team-avatar game-team">윤</div>
-          <div>
-            <div class="team-name">윤재영</div>
-            <small class="muted">UI/HUD · 적 스폰 · 이펙트 · 사운드</small>
-          </div>
-        </div>
-      </div>
-    </div>
+    </section>
 
-    <div class="dep-flow">
-      <div class="dep-box" style="border-color: rgba(94,231,213,0.3); color: var(--cyan);">game/</div>
-      <span class="dep-arrow">→</span>
-      <div class="dep-box" style="border-color: var(--border-light);">bridge/</div>
-      <span class="dep-arrow">→</span>
-      <div class="dep-box" style="border-color: rgba(155,138,251,0.3); color: var(--accent-text);">ai/</div>
-    </div>
-    <p style="text-align: center; margin-top: 8px;"><small class="dim">단방향 의존성 — AI와 게임을 독립 개발 후 bridge에서 통합</small></p>
-  </div>
-</section>
+    <!-- ========== Slide 2: Team ========== -->
+    <section class="slide" data-slide="2">
+      <div class="slide-inner">
+        <h2>팀 소개 & 역할 분담</h2>
 
-<!-- ========== Slide 3: Project Overview ========== -->
-<section class="slide" data-slide="3">
-  <div class="slide-inner">
-    <h2>프로젝트 소개</h2>
-    <h3>웹캠만으로 조작하는 2D 마법 전투 게임</h3>
-
-    <div class="table-wrap mt-1">
-      <table>
-        <thead>
-          <tr><th>입력 채널</th><th>역할</th><th>게임 동작</th></tr>
-        </thead>
-        <tbody>
-          <tr><td><strong>왼손</strong></td><td>마법 스택 입력</td><td><code>rock</code> <code>paper</code> <code>scissors</code> 콤보 누적</td></tr>
-          <tr><td><strong>오른손</strong></td><td>조준 및 발사</td><td>검지 기반 조준, 엄지-검지 pinch로 발사</td></tr>
-          <tr><td><strong>양손</strong></td><td>특수 조작</td><td><code>clasp</code> 마나 충전, <code>sonaldo</code> 전장 전환</td></tr>
-        </tbody>
-      </table>
-    </div>
-
-    <div class="card mt-2" style="border-left: 3px solid var(--accent);">
-      <h3 style="color: var(--accent-text); margin-bottom: 8px;">중간 발표 이후 핵심 변화</h3>
-      <ul class="clean-list">
-        <li>단순 제스처 분류 모델 → <strong>실시간 제스처 모드 시스템</strong>으로 확장</li>
-        <li><code>trigger</code> 제스처의 불안정성 분석 후, <strong>aim + pinch fire</strong> 방식으로 재설계</li>
-        <li>UI 조작을 게임 내부 조준점으로 통일</li>
-      </ul>
-    </div>
-  </div>
-</section>
-
-<!-- ========== Slide 4: Plan → Architecture ========== -->
-<section class="slide" data-slide="4">
-  <div class="slide-inner">
-    <h2>계획에서 최종 아키텍처로</h2>
-
-    <div class="arch-compare">
-      <!-- Plan -->
-      <div>
-        <div class="arch-label">중간 발표 계획</div>
-        <div class="card-sm">
-          <div class="flow-steps">
-            <div class="flow-step"><span class="num">1</span> MediaPipe → 21개 관절 좌표</div>
-            <div class="flow-step"><span class="num">2</span> PyTorch CNN 분류</div>
-            <div class="flow-step"><span class="num">3</span> 규칙 기반 검증</div>
-            <div class="flow-step"><span class="num">4</span> 게임 입력으로 전달</div>
-          </div>
-          <p class="mt-1" style="font-size: 0.82rem;"><span class="muted">→ CNN 하나가 모든 제스처를 분류하는 구조</span></p>
-        </div>
-      </div>
-
-      <div class="divider"></div>
-
-      <!-- Final -->
-      <div>
-        <div class="arch-label">최종 구현</div>
-        <div class="card-sm">
-          <div class="flow-steps">
-            <div class="flow-step"><span class="num">1</span> MediaPipe → HandObservation</div>
-            <div class="flow-step"><span class="num">2</span> 손 채널 분리 (왼/오른/양손)</div>
-            <div class="flow-step"><span class="num">3</span> 모드별 규칙 + 상태머신 판정</div>
-            <div class="flow-step"><span class="num">4</span> debounce + cooldown 안정화</div>
-            <div class="flow-step"><span class="num">5</span> GestureEvent → 게임 씬</div>
-          </div>
-          <p class="mt-1" style="font-size: 0.82rem;"><span class="accent">→ 모델 + 규칙 + 상태머신 하이브리드</span></p>
-        </div>
-      </div>
-    </div>
-
-    <div class="diagram mt-2">
-      <div class="box">Webcam</div>
-      <span class="arrow">→</span>
-      <div class="box">MediaPipe</div>
-      <span class="arrow">→</span>
-      <div class="box highlight">GestureModePipeline</div>
-      <span class="arrow">→</span>
-      <div class="box cyan-hl">GestureEvent</div>
-      <span class="arrow">→</span>
-      <div class="box">Pygame Scene</div>
-    </div>
-  </div>
-</section>
-
-<!-- ========== Slide 5: Data Representation ========== -->
-<section class="slide" data-slide="5">
-  <div class="slide-inner">
-    <h2>데이터 표현: 이미지가 아니라 랜드마크</h2>
-
-    <div class="landmark-info">
-      <div>
-        <div class="card">
-          <h3 style="color: var(--text); margin-bottom: 12px;">입력 데이터 구조</h3>
-          <div class="landmark-grid">
-            <span class="label">관절 수</span><span class="value">21개</span>
-            <span class="label">좌표</span><span class="value"><code>x</code>, <code>y</code>, <code>z</code></span>
-            <span class="label">랜드마크 텐서</span><span class="value"><code>(21, 3)</code></span>
-            <span class="label">손가락 상태</span><span class="value"><code>(5,)</code> — 펴짐/접힘</span>
-            <span class="label">입력 방식</span><span class="value"><strong>Dual-branch</strong> (별도 입력)</span>
-          </div>
-        </div>
-        <div class="card">
-          <h3 style="color: var(--cyan); margin-bottom: 8px;">이미지 CNN 대비 장점</h3>
-          <ul class="clean-list">
-            <li>데이터가 작고 학습이 빠르다</li>
-            <li>배경·피부색·조명 영향을 줄일 수 있다</li>
-            <li>손가락 구조가 정제된 좌표로 표현된다</li>
-          </ul>
-        </div>
-      </div>
-      <div>
-        <div class="card" style="border-left: 3px solid var(--rose);">
-          <h3 style="color: var(--rose); margin-bottom: 8px;">한계</h3>
-          <ul class="clean-list">
-            <li>MediaPipe의 <code>z</code>는 단일 RGB 카메라 기반 추정값</li>
-            <li>깊이 방향 제스처의 안정적 분류가 어렵다</li>
-            <li>손바닥/손등 방향 변화 시 관절 구조가 달라짐</li>
-          </ul>
-          <p class="mt-1" style="font-size: 0.82rem;">
-            <span class="muted">→ <code>trigger</code> 제스처 실패의 근본 원인</span>
-          </p>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ========== Slide 6: Pipeline + Model ========== -->
-<section class="slide" data-slide="6">
-  <div class="slide-inner">
-    <h2>학습 파이프라인 & GestureCNN</h2>
-
-    <div class="grid-2">
-      <!-- Pipeline -->
-      <div>
-        <h3>수집 → 전처리 → 학습 → 평가</h3>
-        <div class="card-sm">
-          <div class="flow-steps">
-            <div class="flow-step"><span class="num">1</span> <code>00_collect_data</code> — raw landmark 수집</div>
-            <div class="flow-step"><span class="num">2</span> <code>01_preprocess</code> — 정규화 + 손가락 상태 추출</div>
-            <div class="flow-step"><span class="num">3</span> <code>02_train_model</code> — GestureCNN 학습</div>
-            <div class="flow-step"><span class="num">4</span> <code>04_evaluate</code> — 혼동 행렬 + 평가</div>
-          </div>
-          <p class="mt-1"><small class="muted"><code>08_ai_workflow</code>로 전 과정 통합 실행</small></p>
-        </div>
-      </div>
-
-      <!-- Model -->
-      <div>
-        <h3>GestureCNN 구조 <span class="badge badge-accent">Dual-branch</span></h3>
-        <div class="card-sm">
-          <div class="model-arch" style="flex-direction: column; gap: 6px;">
-            <div style="display: flex; gap: 24px; align-items: flex-end;">
-              <!-- Conv Branch -->
-              <div class="model-branch">
-                <div class="model-box accent-border">(B, 21, 3)</div>
-                <div class="model-join">↓ permute</div>
-                <div class="model-box">(B, 3, 21)</div>
-                <div class="model-join">↓ Conv1d ×3</div>
-                <div class="model-box">(B, 128, 21)</div>
-                <div class="model-join">↓ GAP</div>
-                <div class="model-box accent-border">(B, 128)</div>
-              </div>
-              <!-- Finger Branch -->
-              <div class="model-branch">
-                <div class="model-box cyan-border">(B, 5)</div>
-                <div class="model-join">↓ Linear</div>
-                <div class="model-box cyan-border">(B, 16)</div>
-                <div style="visibility:hidden;" class="model-box">pad</div>
-                <div style="visibility:hidden;" class="model-box">pad</div>
-                <div style="visibility:hidden;" class="model-box">pad</div>
-                <div style="visibility:hidden;" class="model-join">p</div>
+        <div class="team-grid">
+          <div class="team-section">
+            <div class="team-section-title">AI 파이프라인</div>
+            <div class="team-member">
+              <div class="team-avatar ai-team">유</div>
+              <div>
+                <div class="team-name">유민서</div>
+                <small class="muted">파이프라인 설계 · 모드 시스템 · bridge 통합 · 검증</small>
               </div>
             </div>
-            <div class="model-join">concat → (B, 144)</div>
-            <div class="model-box">Linear(144→64) → Dropout → Linear(64→4)</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <p class="mt-1" style="font-size: 0.88rem; text-align: center;">
-      <span class="muted">Conv1d로 관절 순서의 공간적 패턴을 학습하고, finger state를 명시적 힌트로 결합</span>
-    </p>
-  </div>
-</section>
-
-<!-- ========== Slide 7: Problem 1 - Handedness ========== -->
-<section class="slide" data-slide="7">
-  <div class="slide-inner">
-    <h2>문제 1 — 왼손/오른손 혼동</h2>
-
-    <div class="grid-2">
-      <div>
-        <div class="problem-box">
-          <h3>문제</h3>
-          <ul class="clean-list">
-            <li>사용자는 <strong>거울처럼 좌우 반전된 화면</strong>을 보고 손을 움직인다</li>
-            <li>MediaPipe handedness 라벨은 <strong>원본 카메라 기준</strong></li>
-            <li>왼손/오른손이 반대로 인식되어 입력 채널이 뒤섞임</li>
-          </ul>
-        </div>
-      </div>
-      <div>
-        <div class="solution-box">
-          <h3>해결</h3>
-          <ul class="clean-list">
-            <li>카메라 프레임을 좌우 반전할 때 handedness 라벨도 함께 보정</li>
-            <li><code>CameraThread</code>에 <code>mirror=True</code>, <code>swap_handedness=True</code> 기본 적용</li>
-            <li>테스트로 좌우 라벨 보정 검증</li>
-          </ul>
-        </div>
-      </div>
-    </div>
-
-    <div class="card mt-2" style="text-align: center;">
-      <div class="diagram">
-        <div class="box" style="border-color: var(--rose);">
-          <small class="dim">원본 카메라</small><br>
-          좌 ↔ 우 <span class="rose">불일치</span>
-        </div>
-        <span class="arrow" style="font-size: 1.5rem;">→</span>
-        <div class="box" style="border-color: var(--accent);">
-          <small class="dim">mirror + swap</small><br>
-          좌 ↔ 우 <span class="accent">일치</span>
-        </div>
-        <span class="arrow" style="font-size: 1.5rem;">→</span>
-        <div class="box cyan-hl">
-          왼손 = 스택<br>
-          오른손 = 조준
-        </div>
-      </div>
-    </div>
-
-    <p class="mt-1" style="font-size: 0.85rem; text-align: center;">
-      <span class="muted">단순한 좌표 문제처럼 보이지만, HCI에서는 사용자 좌표계와 모델 좌표계를 맞추는 것이 필수</span>
-    </p>
-  </div>
-</section>
-
-<!-- ========== Slide 8: Problem 2 - Trigger ========== -->
-<section class="slide" data-slide="8">
-  <div class="slide-inner">
-    <h2>문제 2 — trigger 제스처의 불안정성</h2>
-    <h3>모델 한계와 센서 한계가 동시에 나타난 사례</h3>
-
-    <div class="grid-2 mt-1">
-      <div>
-        <div class="problem-box">
-          <h3>문제</h3>
-          <ul class="clean-list">
-            <li><code>trigger</code>는 엄지/검지의 <strong>깊이 방향 관계</strong>가 중요</li>
-            <li>MediaPipe <code>z</code>는 RGB 기반 추정 → <strong>안정적이지 않음</strong></li>
-            <li>손등/손바닥 방향 변화에서 정확도가 크게 흔들림</li>
-            <li>손목 튕기기 발사도 의도치 않은 발사/미발사 반복</li>
-          </ul>
-        </div>
-
-        <div class="card-sm" style="border-left: 3px solid var(--yellow);">
-          <p style="font-size: 0.85rem; margin: 0;">
-            <span class="yellow">핵심 교훈:</span>
-            <span class="muted">학습 데이터를 늘려서 해결하려 했지만, 실제로는 <strong>제스처 정의 자체가 센서에 맞지 않았다</strong></span>
-          </p>
-        </div>
-      </div>
-
-      <div>
-        <div class="solution-box">
-          <h3>결정</h3>
-          <ul class="clean-list">
-            <li><code>trigger</code>를 "모양 분류"로 해결하지 않음</li>
-            <li>오른손 모드를 <strong>완전히 재설계</strong></li>
-          </ul>
-        </div>
-
-        <div class="card mt-1">
-          <h3 style="color: var(--text); margin-bottom: 8px;">새로운 발사 방식</h3>
-          <div class="diagram" style="flex-direction: column; gap: 4px;">
-            <div class="box highlight" style="width: 80%;">검지 펴짐 + 약지/새끼 접힘 → <strong>Aim Pose</strong></div>
-            <span class="arrow" style="transform: rotate(90deg);">→</span>
-            <div class="box cyan-hl" style="width: 80%;">엄지-검지 pinch 거리/속도 → <strong>Fire</strong></div>
-          </div>
-          <p class="mt-1"><small class="muted">정적 포즈가 아니라 <strong>동작의 변화량</strong>으로 발사 판정</small></p>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ========== Slide 9: 3-Mode Input Design ========== -->
-<section class="slide" data-slide="9">
-  <div class="slide-inner">
-    <h2>최종 입력 설계 — 3가지 모드</h2>
-    <h3>손 역할을 분리하여 오인식 범위를 줄임</h3>
-
-    <div class="grid-3 mt-1">
-      <div class="mode-card">
-        <div class="mode-icon">🤜</div>
-        <div class="mode-name">왼손 스택 모드</div>
-        <div class="mode-desc">
-          왼손 1개 감지<br>
-          손가락 상태 규칙 판정<br>
-          <code>rock</code> / <code>paper</code> / <code>scissors</code>
-        </div>
-      </div>
-      <div class="mode-card" style="border-color: rgba(94,231,213,0.3);">
-        <div class="mode-icon">👆</div>
-        <div class="mode-name">오른손 조준 모드</div>
-        <div class="mode-desc">
-          검지 펴짐 + 약지/새끼 접힘<br>
-          EMA 스무딩 조준점<br>
-          pinch → <code>fire</code>
-        </div>
-      </div>
-      <div class="mode-card" style="border-color: rgba(155,138,251,0.2);">
-        <div class="mode-icon">🙏</div>
-        <div class="mode-name">양손 특수 모드</div>
-        <div class="mode-desc">
-          양손 안정 감지<br>
-          기하학 규칙 판정<br>
-          <code>clasp</code> / <code>sonaldo</code>
-        </div>
-      </div>
-    </div>
-
-    <div class="grid-2 mt-2">
-      <div class="card-sm">
-        <h3 style="color: var(--text); margin-bottom: 8px;">안정화 메커니즘</h3>
-        <ul class="clean-list">
-          <li><strong>stable_seconds</strong> — 즉시 확정하지 않고 안정화 대기</li>
-          <li><strong>grace_seconds</strong> — 짧은 추적 끊김 유예</li>
-          <li><strong>cooldown</strong> — 중복 입력 제한</li>
-          <li><strong>suppress</strong> — 양손 모드 시 단일 손 이벤트 억제</li>
-        </ul>
-      </div>
-      <div class="card-sm">
-        <h3 style="color: var(--text); margin-bottom: 8px;">UI 조준점 통일</h3>
-        <ul class="clean-list">
-          <li>OS 마우스 커서를 강제로 움직이지 않음</li>
-          <li>모든 씬이 내부 <code>aim_pos</code>를 공유</li>
-          <li>마우스와 제스처가 같은 <code>aim_pos</code> 업데이트</li>
-          <li>전투, 보상, UI, 타이틀 모두 같은 방식</li>
-        </ul>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ========== Slide 10: Aim/Fire + Special ========== -->
-<section class="slide" data-slide="10">
-  <div class="slide-inner">
-    <h2>조준/발사 알고리즘 & 양손 특수 제스처</h2>
-
-    <div class="grid-2">
-      <!-- Aim/Fire -->
-      <div>
-        <div class="card">
-          <h3 style="color: var(--cyan); margin-bottom: 12px;">오른손: Aim + Pinch Fire</h3>
-          <p style="font-size: 0.85rem; margin-bottom: 10px;">
-            <strong>조준</strong> — 검지 끝(landmark 8) 중심, sensitivity 매핑 + EMA smoothing
-          </p>
-          <p style="font-size: 0.85rem; margin-bottom: 10px;">
-            <strong>발사</strong> — 엄지-검지 거리를 손 크기로 정규화<br>
-            <code>open_threshold</code> → armed → <code>closed_threshold</code> + 닫힘 속도 → fire
-          </p>
-          <div class="card-sm" style="background: rgba(249,117,131,0.06); border-color: rgba(249,117,131,0.2); margin-top: 10px;">
-            <p style="font-size: 0.82rem; margin: 0;">
-              <span class="rose">문제:</span> pinch 시 검지가 움직여 조준점이 흔들림<br>
-              <span class="cyan">해결:</span> 발사 순간이 아닌 <strong>직전 aim history 좌표</strong>를 사용
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <!-- Special -->
-      <div>
-        <div class="card">
-          <h3 style="color: var(--accent-text); margin-bottom: 12px;">양손: 기하학 규칙 분리</h3>
-
-          <div class="card-sm mb-1" style="border-left: 3px solid var(--accent);">
-            <p style="font-size: 0.85rem; margin: 0;">
-              <strong>clasp</strong> — same-pair touch<br>
-              <small class="muted">양손 검지끼리, 엄지끼리 가까운 다이아몬드 형태 → 마나 충전</small>
-            </p>
-          </div>
-
-          <div class="card-sm" style="border-left: 3px solid var(--cyan);">
-            <p style="font-size: 0.85rem; margin: 0;">
-              <strong>sonaldo</strong> — cross-pair touch<br>
-              <small class="muted">왼손 검지↔오른손 엄지, 왼손 엄지↔오른손 검지 → 전장 전환</small>
-            </p>
-          </div>
-
-          <p class="mt-1" style="font-size: 0.82rem;">
-            <span class="muted">손 크기로 정규화한 landmark pair 거리로 판정<br>
-            이미지 분류가 아니라 <strong>손 구조의 기하학을 직접 활용</strong></span>
-          </p>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ========== Slide 11: Trial & Error Summary ========== -->
-<section class="slide" data-slide="11">
-  <div class="slide-inner">
-    <h2>시행착오와 수정 과정 요약</h2>
-
-    <div class="table-wrap mt-1">
-      <table>
-        <thead>
-          <tr><th>문제</th><th>원인 분석</th><th>수정</th></tr>
-        </thead>
-        <tbody>
-          <tr style="background: var(--accent-dim);">
-            <td>왼손/오른손 혼동</td>
-            <td>mirrored camera + handedness mismatch</td>
-            <td>handedness swap, 손 역할 분리</td>
-          </tr>
-          <tr style="background: var(--accent-dim);">
-            <td>trigger 인식 불안정</td>
-            <td>z축/깊이 정보 한계, 손 방향 변화</td>
-            <td>trigger 제거 → aim + pinch fire 재설계</td>
-          </tr>
-          <tr style="background: var(--accent-dim);">
-            <td>idle/unknown 학습 애매함</td>
-            <td>"모르는 것"의 분포가 너무 넓음</td>
-            <td>candidate gate + <code>None</code> 반환</td>
-          </tr>
-          <tr>
-            <td><span class="muted">손바닥/손등 방향 변화</span></td>
-            <td><span class="muted">단일 포즈 데이터로 일반화 어려움</span></td>
-            <td><span class="muted">손가락 상태 규칙 + 모드 안정화</span></td>
-          </tr>
-          <tr>
-            <td><span class="muted">pinch 시 조준점 이동</span></td>
-            <td><span class="muted">발사 동작이 검지 위치를 흔듦</span></td>
-            <td><span class="muted">발사 직전 aim history 좌표 사용</span></td>
-          </tr>
-          <tr>
-            <td><span class="muted">clasp/sonaldo 혼동</span></td>
-            <td><span class="muted">두 손가락 pair 관계가 유사</span></td>
-            <td><span class="muted">same-pair / cross-pair 거리 규칙 분리</span></td>
-          </tr>
-          <tr>
-            <td><span class="muted">순간 추적 끊김</span></td>
-            <td><span class="muted">웹캠/MediaPipe frame noise</span></td>
-            <td><span class="muted">stable delay + grace time + cooldown</span></td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <p class="mt-1" style="font-size: 0.82rem; text-align: center;">
-      <span class="accent">강조 항목</span><span class="muted"> — 발표에서 깊이 설명 &nbsp;|&nbsp; </span>
-      <span class="muted">나머지 — 질의응답 시 보충</span>
-    </p>
-  </div>
-</section>
-
-<!-- ========== Slide 12: Evaluation ========== -->
-<section class="slide" data-slide="12">
-  <div class="slide-inner">
-    <h2>테스트와 평가</h2>
-
-    <div class="grid-2">
-      <div>
-        <h3>정량 평가</h3>
-        <div class="eval-images" style="grid-template-columns: 1fr;">
-          <div>
-            <div class="img-wrap">
-              <img src="../models/confusion_matrix.png" alt="Confusion Matrix">
+            <div class="team-member">
+              <div class="team-avatar ai-team">이</div>
+              <div>
+                <div class="team-name">이현승</div>
+                <small class="muted">데이터 수집/전처리 · CNN 학습 실험 · 평가 · 진단 도구</small>
+              </div>
             </div>
-            <div class="img-label">혼동 행렬 — Test Accuracy 99% (198/200)</div>
           </div>
-        </div>
-      </div>
-      <div>
-        <h3>학습 곡선</h3>
-        <div class="eval-images" style="grid-template-columns: 1fr;">
-          <div>
-            <div class="img-wrap">
-              <img src="../models/training_history.png" alt="Training History">
+          <div class="team-section">
+            <div class="team-section-title">게임 클라이언트</div>
+            <div class="team-member">
+              <div class="team-avatar game-team">윤</div>
+              <div>
+                <div class="team-name">윤재영</div>
+                <small class="muted">적 시스템 · 마법/투사체 · 스테이지</small>
+              </div>
             </div>
-            <div class="img-label">50 epochs 학습 — Loss/Accuracy 수렴</div>
+            <div class="team-member">
+              <div class="team-avatar game-team">김</div>
+              <div>
+                <div class="team-name">김규민</div>
+                <small class="muted">플레이어 시스템 · 마법/투사체 · UI/HUD</small>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div class="card mt-1">
-          <h3 style="color: var(--text); margin-bottom: 8px;">자동 테스트 <span class="badge badge-pass">90 passed</span></h3>
+        <div class="dep-flow">
+          <div class="dep-box" style="border-color: rgba(94,231,213,0.3); color: var(--cyan);">game/</div>
+          <span class="dep-arrow">→</span>
+          <div class="dep-box" style="border-color: var(--border-light);">bridge/</div>
+          <span class="dep-arrow">→</span>
+          <div class="dep-box" style="border-color: rgba(155,138,251,0.3); color: var(--accent-text);">ai/</div>
+        </div>
+        <p style="text-align: center; margin-top: 8px;"><small class="dim">단방향 의존성 — AI와 게임을 독립 개발 후 bridge에서 통합</small>
+        </p>
+      </div>
+    </section>
+
+    <!-- ========== Slide 3: Project Overview ========== -->
+    <section class="slide" data-slide="3">
+      <div class="slide-inner">
+        <h2>프로젝트 소개</h2>
+        <h3>웹캠만으로 조작하는 2D 마법 전투 게임</h3>
+
+        <div class="table-wrap mt-1">
+          <table>
+            <thead>
+              <tr>
+                <th>입력 채널</th>
+                <th>역할</th>
+                <th>게임 동작</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>왼손</strong></td>
+                <td>마법 스택 입력</td>
+                <td><code>rock</code> <code>paper</code> <code>scissors</code> 콤보 누적</td>
+              </tr>
+              <tr>
+                <td><strong>오른손</strong></td>
+                <td>조준 및 발사</td>
+                <td>검지 기반 조준, 엄지-검지 pinch로 발사</td>
+              </tr>
+              <tr>
+                <td><strong>양손</strong></td>
+                <td>특수 조작</td>
+                <td><code>clasp</code> 마나 충전, <code>sonaldo</code> 전장 전환</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="card mt-2" style="border-left: 3px solid var(--accent);">
+          <h3 style="color: var(--accent-text); margin-bottom: 8px;">중간 발표 이후 핵심 변화</h3>
           <ul class="clean-list">
-            <li>AI 전처리, 데이터셋, 모델, 규칙 판정</li>
-            <li>aim tracker, gesture mode pipeline</li>
-            <li>bridge/game integration</li>
-            <li>UI gesture control</li>
+            <li>단순 제스처 분류 모델 → <strong>실시간 제스처 모드 시스템</strong>으로 확장</li>
+            <li><code>trigger</code> 제스처의 불안정성 분석 후, <strong>aim + pinch fire</strong> 방식으로 재설계</li>
+            <li>UI 조작을 게임 내부 조준점으로 통일</li>
           </ul>
         </div>
       </div>
-    </div>
+    </section>
 
-    <p class="mt-1" style="font-size: 0.82rem; text-align: center;">
-      <span class="muted">정확도 숫자만이 아니라, 실시간 게임 입력의 <strong>시간적 안정성</strong>과 <strong>사용감</strong>도 평가 기준</span>
-    </p>
-  </div>
-</section>
+    <!-- ========== Slide 4: Plan → Architecture ========== -->
+    <section class="slide" data-slide="4">
+      <div class="slide-inner">
+        <h2>계획에서 최종 아키텍처로</h2>
 
-<!-- ========== Slide 13: Demo ========== -->
-<section class="slide" data-slide="13">
-  <div class="slide-inner" style="text-align: center;">
-    <h2 style="text-align: center;">데모 영상</h2>
-
-    <div class="demo-placeholder" id="demoContainer">
-      <!-- 영상 파일이 준비되면 아래 주석을 해제하고 경로를 수정하세요:
-      <video controls autoplay muted loop>
-        <source src="./demo.mp4" type="video/mp4">
-      </video>
-      -->
-      <div class="icon">▶</div>
-      <p style="font-size: 0.95rem; margin: 0;">데모 영상 준비 중</p>
-      <p style="margin: 0;"><small class="dim">이 슬라이드의 HTML 주석을 해제하고 영상 파일 경로를 지정하세요</small></p>
-    </div>
-
-    <p class="mt-1"><small class="muted">
-      왼손 스택 → 오른손 조준/발사 → 양손 마나 충전 → 전장 전환 시연
-    </small></p>
-  </div>
-</section>
-
-<!-- ========== Slide 14: Conclusion ========== -->
-<section class="slide" data-slide="14">
-  <div class="slide-inner">
-    <h2>결론</h2>
-    <h3>모델을 만드는 것에서, 동작하는 AI 시스템을 만드는 것으로</h3>
-
-    <div class="grid-2 mt-1">
-      <div>
-        <h3 style="color: var(--accent-text); margin-bottom: 12px;">배운 점</h3>
-        <div class="conclusion-points">
-          <div class="conclusion-point">
-            <span class="bullet"></span>
-            <span>좋은 모델 하나만으로 실시간 HCI 문제가 해결되지는 않는다</span>
+        <div class="arch-compare">
+          <!-- Plan -->
+          <div>
+            <div class="arch-label">중간 발표 계획</div>
+            <div class="card-sm">
+              <div class="flow-steps">
+                <div class="flow-step"><span class="num">1</span> MediaPipe → 21개 관절 좌표 (CSV 저장)</div>
+                <div class="flow-step"><span class="num">2</span> PyTorch CNN 분류</div>
+                <div class="flow-step"><span class="num">3</span> 규칙 기반 검증</div>
+                <div class="flow-step"><span class="num">4</span> 게임 입력으로 전달</div>
+              </div>
+              <p class="mt-1" style="font-size: 0.82rem;"><span class="muted">→ CNN 하나가 모든 제스처를 분류하는 구조</span></p>
+            </div>
           </div>
-          <div class="conclusion-point">
-            <span class="bullet"></span>
-            <span>데이터 수집, 모델, 규칙 검증, 상태머신, UI 통합이 모두 함께 설계되어야 한다</span>
+
+          <div class="divider"></div>
+
+          <!-- Final -->
+          <div>
+            <div class="arch-label">최종 구현</div>
+            <div class="card-sm">
+              <div class="flow-steps">
+                <div class="flow-step"><span class="num">1</span> MediaPipe → HandObservation (JSON 포맷)</div>
+                <div class="flow-step"><span class="num">2</span> 손 채널 분리 (왼/오른/양손)</div>
+                <div class="flow-step"><span class="num">3</span> 모드별 규칙 + 상태머신 판정</div>
+                <div class="flow-step"><span class="num">4</span> debounce + cooldown 안정화</div>
+                <div class="flow-step"><span class="num">5</span> GestureEvent → 게임 씬</div>
+              </div>
+              <p class="mt-1" style="font-size: 0.82rem;"><span class="accent">→ 모델 + 규칙 + 상태머신 하이브리드</span></p>
+            </div>
           </div>
-          <div class="conclusion-point">
-            <span class="bullet"></span>
-            <span>실패한 제스처를 억지로 학습시키는 것보다, 입력 체계를 다시 정의하는 것이 더 나은 해결책</span>
+        </div>
+
+        <div class="diagram mt-2">
+          <div class="box">Webcam</div>
+          <span class="arrow">→</span>
+          <div class="box">MediaPipe</div>
+          <span class="arrow">→</span>
+          <div class="box highlight">GestureModePipeline</div>
+          <span class="arrow">→</span>
+          <div class="box cyan-hl">GestureEvent</div>
+          <span class="arrow">→</span>
+          <div class="box">Pygame Scene</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== Slide 5: Data Representation ========== -->
+    <section class="slide" data-slide="5">
+      <div class="slide-inner">
+        <h2>데이터 표현: 이미지가 아니라 랜드마크</h2>
+
+        <div class="landmark-info">
+          <div>
+            <div class="card">
+              <h3 style="color: var(--text); margin-bottom: 12px;">입력 데이터 구조</h3>
+              <div class="landmark-grid">
+                <span class="label">관절 수</span><span class="value">21개</span>
+                <span class="label">좌표</span><span class="value"><code>x</code>, <code>y</code>, <code>z</code></span>
+                <span class="label">랜드마크 텐서</span><span class="value"><code>(21, 3)</code></span>
+                <span class="label">손가락 상태</span><span class="value"><code>(5,)</code> — 펴짐/접힘</span>
+                <span class="label">입력 방식</span><span class="value"><strong>Dual-branch</strong> (별도 입력)</span>
+              </div>
+            </div>
+            <div class="card">
+              <h3 style="color: var(--cyan); margin-bottom: 8px;">이미지 CNN 대비 장점</h3>
+              <ul class="clean-list">
+                <li>데이터가 작고 학습이 빠르다</li>
+                <li>배경·피부색·조명 영향을 줄일 수 있다</li>
+                <li>손가락 구조가 정제된 좌표로 표현된다</li>
+              </ul>
+            </div>
+          </div>
+          <div>
+            <div class="card" style="border-left: 3px solid var(--rose);">
+              <h3 style="color: var(--rose); margin-bottom: 8px;">한계</h3>
+              <ul class="clean-list">
+                <li>MediaPipe의 <code>z</code>는 단일 RGB 카메라 기반 추정값</li>
+                <li>깊이 방향 제스처의 안정적 분류가 어렵다</li>
+                <li>손바닥/손등 방향 변화 시 관절 구조가 달라짐</li>
+              </ul>
+              <p class="mt-1" style="font-size: 0.82rem;">
+                <span class="muted">→ <code>trigger</code> 제스처 실패의 근본 원인</span>
+              </p>
+            </div>
           </div>
         </div>
       </div>
-      <div>
-        <h3 style="color: var(--cyan); margin-bottom: 12px;">최종 성과</h3>
-        <div class="conclusion-points">
-          <div class="conclusion-point">
-            <span class="bullet" style="background: var(--cyan);"></span>
-            <span>MediaPipe landmark 기반 AI 입력 시스템</span>
+    </section>
+
+    <!-- ========== Slide 6: Pipeline + Model ========== -->
+    <section class="slide" data-slide="6">
+      <div class="slide-inner">
+        <h2>학습 파이프라인 & GestureCNN</h2>
+
+        <div class="grid-2">
+          <!-- Pipeline -->
+          <div>
+            <h3>수집 → 전처리 → 학습 → 평가</h3>
+            <div class="card-sm">
+              <div class="flow-steps">
+                <div class="flow-step"><span class="num">1</span> <code>00_collect_data</code> — raw landmark 수집</div>
+                <div class="flow-step"><span class="num">2</span> <code>01_preprocess</code> — 정규화 + 손가락 상태 추출</div>
+                <div class="flow-step"><span class="num">3</span> <code>02_train_model</code> — GestureCNN 학습</div>
+                <div class="flow-step"><span class="num">4</span> <code>04_evaluate</code> — 혼동 행렬 + 평가</div>
+              </div>
+              <p class="mt-1"><small class="muted"><code>08_ai_workflow</code>로 전 과정 통합 실행</small></p>
+            </div>
           </div>
-          <div class="conclusion-point">
-            <span class="bullet" style="background: var(--cyan);"></span>
-            <span>CNN 학습/평가 파이프라인 + 99% 분류 정확도</span>
+
+          <!-- Model -->
+          <div>
+            <h3>GestureCNN 구조 <span class="badge badge-accent">Dual-branch</span></h3>
+            <div class="card-sm">
+              <div class="model-arch" style="flex-direction: column; gap: 6px;">
+                <div style="display: flex; gap: 24px; align-items: flex-end;">
+                  <!-- Conv Branch -->
+                  <div class="model-branch">
+                    <div class="model-box accent-border">(B, 21, 3)</div>
+                    <div class="model-join">↓ permute</div>
+                    <div class="model-box">(B, 3, 21)</div>
+                    <div class="model-join">↓ Conv1d ×3</div>
+                    <div class="model-box">(B, 128, 21)</div>
+                    <div class="model-join">↓ GAP</div>
+                    <div class="model-box accent-border">(B, 128)</div>
+                  </div>
+                  <!-- Finger Branch -->
+                  <div class="model-branch">
+                    <div class="model-box cyan-border">(B, 5)</div>
+                    <div class="model-join">↓ Linear</div>
+                    <div class="model-box cyan-border">(B, 16)</div>
+                    <div style="visibility:hidden;" class="model-box">pad</div>
+                    <div style="visibility:hidden;" class="model-box">pad</div>
+                    <div style="visibility:hidden;" class="model-box">pad</div>
+                    <div style="visibility:hidden;" class="model-join">p</div>
+                  </div>
+                </div>
+                <div class="model-join">concat → (B, 144)</div>
+                <div class="model-box">Linear(144→64) → Dropout → Linear(64→4)</div>
+              </div>
+            </div>
           </div>
-          <div class="conclusion-point">
-            <span class="bullet" style="background: var(--cyan);"></span>
-            <span>실시간 제스처 모드 파이프라인 (3모드 상태머신)</span>
+        </div>
+
+        <p class="mt-1" style="font-size: 0.88rem; text-align: center;">
+          <span class="muted">Conv1d로 관절 순서의 공간적 패턴을 학습하고, finger state를 명시적 힌트로 결합</span>
+        </p>
+      </div>
+    </section>
+
+    <!-- ========== Slide 7: Problem 1 - Handedness ========== -->
+    <section class="slide" data-slide="7">
+      <div class="slide-inner">
+        <h2>문제 1 — 왼손/오른손 혼동</h2>
+
+        <div class="grid-2">
+          <div>
+            <div class="problem-box">
+              <h3>문제</h3>
+              <ul class="clean-list">
+                <li>사용자는 <strong>거울처럼 좌우 반전된 화면</strong>을 보고 손을 움직인다</li>
+                <li>MediaPipe handedness 라벨은 <strong>원본 카메라 기준</strong></li>
+                <li>왼손/오른손이 반대로 인식되어 입력 채널이 뒤섞임</li>
+              </ul>
+            </div>
           </div>
-          <div class="conclusion-point">
-            <span class="bullet" style="background: var(--cyan);"></span>
-            <span>Pygame 게임과 AI 입력 통합 + 90개 자동 테스트</span>
+          <div>
+            <div class="solution-box">
+              <h3>해결</h3>
+              <ul class="clean-list">
+                <li>카메라 프레임을 좌우 반전할 때 handedness 라벨도 함께 보정</li>
+                <li><code>CameraThread</code>에 <code>mirror=True</code>, <code>swap_handedness=True</code> 기본 적용</li>
+                <li>테스트로 좌우 라벨 보정 검증</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="card mt-2" style="text-align: center;">
+          <div class="diagram">
+            <div class="box" style="border-color: var(--rose);">
+              <small class="dim">원본 카메라</small><br>
+              좌 ↔ 우 <span class="rose">불일치</span>
+            </div>
+            <span class="arrow" style="font-size: 1.5rem;">→</span>
+            <div class="box" style="border-color: var(--accent);">
+              <small class="dim">mirror + swap</small><br>
+              좌 ↔ 우 <span class="accent">일치</span>
+            </div>
+            <span class="arrow" style="font-size: 1.5rem;">→</span>
+            <div class="box cyan-hl">
+              왼손 = 스택<br>
+              오른손 = 조준
+            </div>
+          </div>
+        </div>
+
+        <p class="mt-1" style="font-size: 0.85rem; text-align: center;">
+          <span class="muted">단순한 좌표 문제처럼 보이지만, HCI에서는 사용자 좌표계와 모델 좌표계를 맞추는 것이 필수</span>
+        </p>
+      </div>
+    </section>
+
+    <!-- ========== Slide 8: Problem 2 - Trigger ========== -->
+    <section class="slide" data-slide="8">
+      <div class="slide-inner">
+        <h2>문제 2 — trigger 제스처의 불안정성</h2>
+        <h3>모델 한계와 센서 한계가 동시에 나타난 사례</h3>
+
+        <div class="grid-2 mt-1">
+          <div>
+            <div class="problem-box">
+              <h3>문제</h3>
+              <ul class="clean-list">
+                <li><code>trigger</code>는 엄지/검지의 <strong>깊이 방향 관계</strong>가 중요</li>
+                <li>MediaPipe <code>z</code>는 RGB 기반 추정 → <strong>안정적이지 않음</strong></li>
+                <li>손등/손바닥 방향 변화에서 정확도가 크게 흔들림</li>
+                <li>손목 튕기기 발사도 의도치 않은 발사/미발사 반복</li>
+              </ul>
+            </div>
+
+            <div class="card-sm" style="border-left: 3px solid var(--yellow);">
+              <p style="font-size: 0.85rem; margin: 0;">
+                <span class="yellow">핵심 교훈:</span>
+                <span class="muted">학습 데이터를 늘려서 해결하려 했지만, 실제로는 <strong>제스처 정의 자체가 센서에 맞지 않았다</strong></span>
+              </p>
+            </div>
+          </div>
+
+          <div>
+            <div class="solution-box">
+              <h3>결정</h3>
+              <ul class="clean-list">
+                <li><code>trigger</code>를 "모양 분류"로 해결하지 않음</li>
+                <li>오른손 모드를 <strong>완전히 재설계</strong></li>
+              </ul>
+            </div>
+
+            <div class="card mt-1">
+              <h3 style="color: var(--text); margin-bottom: 8px;">새로운 발사 방식</h3>
+              <div class="diagram" style="flex-direction: column; gap: 4px;">
+                <div class="box highlight" style="width: 80%;">검지 펴짐 + 약지/새끼 접힘 → <strong>Aim Pose</strong></div>
+                <span class="arrow" style="transform: rotate(90deg);">→</span>
+                <div class="box cyan-hl" style="width: 80%;">엄지-검지 pinch 거리/속도 → <strong>Fire</strong></div>
+              </div>
+              <p class="mt-1"><small class="muted">정적 포즈가 아니라 <strong>동작의 변화량</strong>으로 발사 판정</small></p>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </section>
 
-    <div class="closing-quote mt-2">
-      MotionMagic은 단순한 게임 구현이 아니라,<br>
-      AI 모델을 실제 사용자 입력 시스템으로 배포할 때 필요한<br>
-      <strong>문제 해결 과정을 경험한 프로젝트</strong>입니다.
-    </div>
+    <!-- ========== Slide 9: 3-Mode Input Design ========== -->
+    <section class="slide" data-slide="9">
+      <div class="slide-inner">
+        <h2>최종 입력 설계 — 3가지 모드</h2>
+        <h3>손 역할을 분리하여 오인식 범위를 줄임</h3>
+
+        <div class="grid-3 mt-1">
+          <div class="mode-card">
+            <div class="mode-icon">🤜</div>
+            <div class="mode-name">왼손 스택 모드</div>
+            <div class="mode-desc">
+              왼손 1개 감지<br>
+              손가락 상태 규칙 판정<br>
+              <code>rock</code> / <code>paper</code> / <code>scissors</code>
+            </div>
+          </div>
+          <div class="mode-card" style="border-color: rgba(94,231,213,0.3);">
+            <div class="mode-icon">👆</div>
+            <div class="mode-name">오른손 조준 모드</div>
+            <div class="mode-desc">
+              검지 펴짐 + 약지/새끼 접힘<br>
+              EMA 스무딩 조준점<br>
+              pinch → <code>fire</code>
+            </div>
+          </div>
+          <div class="mode-card" style="border-color: rgba(155,138,251,0.2);">
+            <div class="mode-icon">🙏</div>
+            <div class="mode-name">양손 특수 모드</div>
+            <div class="mode-desc">
+              양손 안정 감지<br>
+              기하학 규칙 판정<br>
+              <code>clasp</code> / <code>sonaldo</code>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid-2 mt-2">
+          <div class="card-sm">
+            <h3 style="color: var(--text); margin-bottom: 8px;">안정화 메커니즘</h3>
+            <ul class="clean-list">
+              <li><strong>stable_seconds</strong> — 즉시 확정하지 않고 안정화 대기</li>
+              <li><strong>grace_seconds</strong> — 짧은 추적 끊김 유예</li>
+              <li><strong>cooldown</strong> — 중복 입력 제한</li>
+              <li><strong>suppress</strong> — 양손 모드 시 단일 손 이벤트 억제</li>
+            </ul>
+          </div>
+          <div class="card-sm">
+            <h3 style="color: var(--text); margin-bottom: 8px;">UI 조준점 통일</h3>
+            <ul class="clean-list">
+              <li>마우스와 제스처를 하나의 조준 체계로 통일</li>
+              <li>모든 씬이 내부 <code>aim_pos</code>를 공유</li>
+              <li>마우스와 제스처가 같은 <code>aim_pos</code> 업데이트</li>
+              <li>전투, 보상, UI, 타이틀 모두 같은 방식</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== Slide 10: Aim/Fire + Special ========== -->
+    <section class="slide" data-slide="10">
+      <div class="slide-inner">
+        <h2>조준/발사 알고리즘 & 양손 특수 제스처</h2>
+
+        <div class="grid-2">
+          <!-- Aim/Fire -->
+          <div>
+            <div class="card">
+              <h3 style="color: var(--cyan); margin-bottom: 12px;">오른손: Aim + Pinch Fire</h3>
+              <p style="font-size: 0.85rem; margin-bottom: 10px;">
+                <strong>조준</strong> — 검지 끝(landmark 8) 중심, sensitivity 매핑 + EMA smoothing
+              </p>
+              <p style="font-size: 0.85rem; margin-bottom: 10px;">
+                <strong>발사</strong> — 엄지-검지 거리를 손 크기로 정규화<br>
+                <code>open_threshold</code> → armed → <code>closed_threshold</code> + 닫힘 속도 → fire
+              </p>
+              <div class="card-sm"
+                style="background: rgba(249,117,131,0.06); border-color: rgba(249,117,131,0.2); margin-top: 10px;">
+                <p style="font-size: 0.82rem; margin: 0;">
+                  <span class="rose">문제:</span> pinch 시 검지가 움직여 조준점이 흔들림<br>
+                  <span class="cyan">해결:</span> 발사 순간이 아닌 <strong>직전 aim history 좌표</strong>를 사용
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Special -->
+          <div>
+            <div class="card">
+              <h3 style="color: var(--accent-text); margin-bottom: 12px;">양손: 기하학 규칙 분리</h3>
+
+              <div class="card-sm mb-1" style="border-left: 3px solid var(--accent);">
+                <p style="font-size: 0.85rem; margin: 0;">
+                  <strong>clasp</strong> — same-pair touch<br>
+                  <small class="muted">양손 검지끼리, 엄지끼리 가까운 다이아몬드 형태 → 마나 충전</small>
+                </p>
+              </div>
+
+              <div class="card-sm" style="border-left: 3px solid var(--cyan);">
+                <p style="font-size: 0.85rem; margin: 0;">
+                  <strong>sonaldo</strong> — cross-pair touch<br>
+                  <small class="muted">왼손 검지↔오른손 엄지, 왼손 엄지↔오른손 검지 → 전장 전환</small>
+                </p>
+              </div>
+
+              <p class="mt-1" style="font-size: 0.82rem;">
+                <span class="muted">손 크기로 정규화한 landmark pair 거리로 판정<br>
+                  이미지 분류가 아니라 <strong>손 구조의 기하학을 직접 활용</strong></span>
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== Slide 11: Trial & Error Summary ========== -->
+    <section class="slide" data-slide="11">
+      <div class="slide-inner">
+        <h2>시행착오와 수정 과정 요약</h2>
+
+        <div class="table-wrap mt-1">
+          <table>
+            <thead>
+              <tr>
+                <th>문제</th>
+                <th>원인 분석</th>
+                <th>수정</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr style="background: var(--accent-dim);">
+                <td>왼손/오른손 혼동</td>
+                <td>mirrored camera + handedness mismatch</td>
+                <td>handedness swap, 손 역할 분리</td>
+              </tr>
+              <tr style="background: var(--accent-dim);">
+                <td>trigger 인식 불안정</td>
+                <td>z축/깊이 정보 한계, 손 방향 변화</td>
+                <td>trigger 제거 → aim + pinch fire 재설계</td>
+              </tr>
+              <tr style="background: var(--accent-dim);">
+                <td>idle/unknown 학습 애매함</td>
+                <td>"모르는 것"의 분포가 너무 넓음</td>
+                <td>candidate gate + <code>None</code> 반환</td>
+              </tr>
+              <tr>
+                <td><span class="muted">손바닥/손등 방향 변화</span></td>
+                <td><span class="muted">단일 포즈 데이터로 일반화 어려움</span></td>
+                <td><span class="muted">손가락 상태 규칙 + 모드 안정화</span></td>
+              </tr>
+              <tr>
+                <td><span class="muted">pinch 시 조준점 이동</span></td>
+                <td><span class="muted">발사 동작이 검지 위치를 흔듦</span></td>
+                <td><span class="muted">발사 직전 aim history 좌표 사용</span></td>
+              </tr>
+              <tr>
+                <td><span class="muted">clasp/sonaldo 혼동</span></td>
+                <td><span class="muted">두 손가락 pair 관계가 유사</span></td>
+                <td><span class="muted">same-pair / cross-pair 거리 규칙 분리</span></td>
+              </tr>
+              <tr>
+                <td><span class="muted">순간 추적 끊김</span></td>
+                <td><span class="muted">웹캠/MediaPipe frame noise</span></td>
+                <td><span class="muted">stable delay + grace time + cooldown</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+
+      </div>
+    </section>
+
+    <!-- ========== Slide 12: Evaluation ========== -->
+    <section class="slide" data-slide="12">
+      <div class="slide-inner">
+        <h2>테스트와 평가</h2>
+
+        <div class="grid-2">
+          <div>
+            <h3>정량 평가</h3>
+            <div class="eval-images" style="grid-template-columns: 1fr;">
+              <div>
+                <div class="img-wrap">
+                  <img src="../models/confusion_matrix.png" alt="Confusion Matrix">
+                </div>
+                <div class="img-label">혼동 행렬 — Test Accuracy 99% (198/200)</div>
+              </div>
+            </div>
+          </div>
+          <div>
+            <h3>학습 곡선</h3>
+            <div class="eval-images" style="grid-template-columns: 1fr;">
+              <div>
+                <div class="img-wrap">
+                  <img src="../models/training_history.png" alt="Training History">
+                </div>
+                <div class="img-label">50 epochs 학습 — Loss/Accuracy 수렴</div>
+              </div>
+            </div>
+
+            <div class="card mt-1">
+              <h3 style="color: var(--text); margin-bottom: 8px;">자동 테스트 <span class="badge badge-pass">90 passed</span>
+              </h3>
+              <ul class="clean-list">
+                <li>AI 전처리, 데이터셋, 모델, 규칙 판정</li>
+                <li>aim tracker, gesture mode pipeline</li>
+                <li>bridge/game integration</li>
+                <li>UI gesture control</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <p class="mt-1" style="font-size: 0.82rem; text-align: center;">
+          <span class="muted">정확도 숫자만이 아니라, 실시간 게임 입력의 <strong>시간적 안정성</strong>과 <strong>사용감</strong>도 평가 기준</span>
+        </p>
+      </div>
+    </section>
+
+    <!-- ========== Slide 13: Demo ========== -->
+    <section class="slide" data-slide="13">
+      <div class="slide-inner" style="text-align: center;">
+        <h2 style="text-align: center;">데모 영상</h2>
+
+        <div class="demo-placeholder" id="demoContainer" style="border: none;">
+          <video id="demoVideo" controls muted loop preload="none">
+            <source data-src="./demo.mp4" type="video/mp4">
+          </video>
+        </div>
+
+        <p class="mt-1"><small class="muted">
+            왼손 스택 → 오른손 조준/발사 → 양손 마나 충전 → 전장 전환 시연
+          </small></p>
+      </div>
+    </section>
+
+    <!-- ========== Slide 14: Conclusion ========== -->
+    <section class="slide" data-slide="14">
+      <div class="slide-inner">
+        <h2>결론</h2>
+        <h3>모델을 만드는 것에서, 동작하는 AI 시스템을 만드는 것으로</h3>
+
+        <div class="grid-2 mt-1">
+          <div>
+            <h3 style="color: var(--accent-text); margin-bottom: 12px;">배운 점</h3>
+            <div class="conclusion-points">
+              <div class="conclusion-point">
+                <span class="bullet"></span>
+                <span>좋은 모델 하나만으로 실시간 HCI 문제가 해결되지는 않는다</span>
+              </div>
+              <div class="conclusion-point">
+                <span class="bullet"></span>
+                <span>데이터 수집, 모델, 규칙 검증, 상태머신, UI 통합이 모두 함께 설계되어야 한다</span>
+              </div>
+              <div class="conclusion-point">
+                <span class="bullet"></span>
+                <span>실패한 제스처를 억지로 학습시키는 것보다, 입력 체계를 다시 정의하는 것이 더 나은 해결책</span>
+              </div>
+            </div>
+          </div>
+          <div>
+            <h3 style="color: var(--cyan); margin-bottom: 12px;">최종 성과</h3>
+            <div class="conclusion-points">
+              <div class="conclusion-point">
+                <span class="bullet" style="background: var(--cyan);"></span>
+                <span>MediaPipe landmark 기반 AI 입력 시스템</span>
+              </div>
+              <div class="conclusion-point">
+                <span class="bullet" style="background: var(--cyan);"></span>
+                <span>CNN 학습/평가 파이프라인 + 99% 분류 정확도</span>
+              </div>
+              <div class="conclusion-point">
+                <span class="bullet" style="background: var(--cyan);"></span>
+                <span>실시간 제스처 모드 파이프라인 (3모드 상태머신)</span>
+              </div>
+              <div class="conclusion-point">
+                <span class="bullet" style="background: var(--cyan);"></span>
+                <span>Pygame 게임과 AI 입력 통합 + 90개 자동 테스트</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="closing-quote mt-2">
+          MotionMagic은 단순한 게임 구현이 아니라,<br>
+          AI 모델을 실제 사용자 입력 시스템으로 배포할 때 필요한<br>
+          <strong>문제 해결 과정을 경험한 프로젝트</strong>였다.
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== Slide 15: Q&A ========== -->
+    <section class="slide slide-title" data-slide="15">
+      <div class="slide-inner" style="text-align: center;">
+        <h1 style="font-size: 3.6rem; margin-bottom: 0.4em;">Q & A</h1>
+        <p class="subtitle" style="margin-bottom: 1.5em;">
+          감사합니다
+        </p>
+        <div class="keywords">
+          <span>MediaPipe</span>
+          <span>CNN</span>
+          <span>Gesture Pipeline</span>
+          <span>Pygame-CE</span>
+        </div>
+      </div>
+    </section>
+
   </div>
-</section>
 
-</div>
+  <!-- Progress Bar -->
+  <div class="progress-bar" id="progressBar"></div>
 
-<!-- Progress Bar -->
-<div class="progress-bar" id="progressBar"></div>
+  <!-- Slide Counter -->
+  <div class="slide-counter" id="slideCounter"></div>
 
-<!-- Slide Counter -->
-<div class="slide-counter" id="slideCounter"></div>
+  <script>
+    (function () {
+      const slides = document.querySelectorAll('.slide');
+      const total = slides.length;
+      let current = 0;
 
-<script>
-(function() {
-  const slides = document.querySelectorAll('.slide');
-  const total = slides.length;
-  let current = 0;
+      const progressBar = document.getElementById('progressBar');
+      const slideCounter = document.getElementById('slideCounter');
 
-  const progressBar = document.getElementById('progressBar');
-  const slideCounter = document.getElementById('slideCounter');
+      function updateSlide() {
+        slides.forEach((s, i) => {
+          s.classList.toggle('active', i === current);
+        });
+        progressBar.style.width = ((current + 1) / total * 100) + '%';
+        slideCounter.textContent = (current + 1) + ' / ' + total;
 
-  function updateSlide() {
-    slides.forEach((s, i) => {
-      s.classList.toggle('active', i === current);
-    });
-    progressBar.style.width = ((current + 1) / total * 100) + '%';
-    slideCounter.textContent = (current + 1) + ' / ' + total;
-  }
+        // Lazy-load demo video only when its slide is active
+        const demoVideo = document.getElementById('demoVideo');
+        if (demoVideo) {
+          const demoSlide = demoVideo.closest('.slide');
+          if (demoSlide && demoSlide.classList.contains('active')) {
+            const source = demoVideo.querySelector('source[data-src]');
+            if (source) {
+              source.src = source.getAttribute('data-src');
+              source.removeAttribute('data-src');
+              demoVideo.load();
+              demoVideo.play();
+            }
+          } else {
+            if (!demoVideo.paused) demoVideo.pause();
+          }
+        }
+      }
 
-  function next() {
-    if (current < total - 1) { current++; updateSlide(); }
-  }
+      function next() {
+        if (current < total - 1) { current++; updateSlide(); }
+      }
 
-  function prev() {
-    if (current > 0) { current--; updateSlide(); }
-  }
+      function prev() {
+        if (current > 0) { current--; updateSlide(); }
+      }
 
-  document.addEventListener('keydown', function(e) {
-    if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'ArrowDown') {
-      e.preventDefault(); next();
-    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-      e.preventDefault(); prev();
-    } else if (e.key === 'Home') {
-      e.preventDefault(); current = 0; updateSlide();
-    } else if (e.key === 'End') {
-      e.preventDefault(); current = total - 1; updateSlide();
-    }
-  });
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'ArrowDown') {
+          e.preventDefault(); next();
+        } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+          e.preventDefault(); prev();
+        } else if (e.key === 'Home') {
+          e.preventDefault(); current = 0; updateSlide();
+        } else if (e.key === 'End') {
+          e.preventDefault(); current = total - 1; updateSlide();
+        }
+      });
 
-  // Touch support
-  let touchStartX = 0;
-  document.addEventListener('touchstart', function(e) {
-    touchStartX = e.changedTouches[0].screenX;
-  });
-  document.addEventListener('touchend', function(e) {
-    const dx = e.changedTouches[0].screenX - touchStartX;
-    if (dx < -50) next();
-    else if (dx > 50) prev();
-  });
+      // Touch support
+      let touchStartX = 0;
+      document.addEventListener('touchstart', function (e) {
+        touchStartX = e.changedTouches[0].screenX;
+      });
+      document.addEventListener('touchend', function (e) {
+        const dx = e.changedTouches[0].screenX - touchStartX;
+        if (dx < -50) next();
+        else if (dx > 50) prev();
+      });
 
-  updateSlide();
-})();
-</script>
+      updateSlide();
+    })();
+  </script>
 </body>
+
 </html>
